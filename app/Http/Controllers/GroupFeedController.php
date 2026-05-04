@@ -29,12 +29,11 @@ class GroupFeedController extends Controller
                 'videos.published_at',
                 'videos.channel_id',
                 'user_video_states.state as user_state',
+                'cgc_fav.is_favorite as channel_is_favorite',
             ])
-            ->whereExists(function ($q) use ($group) {
-                $q->selectRaw('1')
-                    ->from('channel_group_channel as cgc')
-                    ->whereColumn('cgc.channel_id', 'videos.channel_id')
-                    ->where('cgc.channel_group_id', $group->id);
+            ->join('channel_group_channel as cgc_fav', function ($join) use ($group) {
+                $join->on('cgc_fav.channel_id', '=', 'videos.channel_id')
+                    ->where('cgc_fav.channel_group_id', $group->id);
             })
             ->leftJoin('user_video_states', function ($join) use ($userId) {
                 $join->on('user_video_states.youtube_video_id', '=', 'videos.youtube_video_id')

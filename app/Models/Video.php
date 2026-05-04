@@ -18,6 +18,7 @@ class Video extends Model
     {
         return [
             'published_at' => 'datetime',
+            'channel_is_favorite' => 'boolean',
         ];
     }
 

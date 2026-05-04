@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { MoreVertical } from 'lucide-vue-next';
+import { MoreVertical, Star } from 'lucide-vue-next';
 import { onMounted, onUnmounted, reactive, ref } from 'vue';
 import GroupPagesNav from '@/components/GroupPagesNav.vue';
 import Heading from '@/components/Heading.vue';
@@ -27,6 +27,7 @@ interface Video {
     thumbnail_url: string | null;
     published_at: string;
     user_state: 'watched' | 'hidden' | null;
+    channel_is_favorite: boolean;
     channel: Channel;
 }
 
@@ -201,11 +202,26 @@ const formatDate = (iso: string) => {
             <div
                 v-for="video in items"
                 :key="video.youtube_video_id"
-                class="group relative cursor-pointer overflow-hidden rounded-xl border transition-opacity"
-                :class="video.user_state === 'watched' ? 'opacity-40 hover:opacity-70' : 'hover:border-foreground/30'"
+                class="group relative cursor-pointer overflow-hidden rounded-xl border-2 transition-opacity"
+                :class="
+                    video.channel_is_favorite
+                        ? video.user_state === 'watched'
+                            ? 'border-yellow-500 opacity-40 hover:opacity-70'
+                            : 'border-yellow-500 hover:border-yellow-600'
+                        : video.user_state === 'watched'
+                          ? 'border-border opacity-40 hover:opacity-70'
+                          : 'border-border hover:border-foreground/30'
+                "
                 @click="onCardClick(video)"
                 @contextmenu="openCtx($event, video)"
             >
+                <div
+                    v-if="video.channel_is_favorite"
+                    class="pointer-events-none absolute left-2 top-2 z-10 rounded-full bg-background/90 p-1 text-yellow-500 shadow-sm ring-1 ring-yellow-500/30"
+                    aria-hidden="true"
+                >
+                    <Star class="h-4 w-4 fill-yellow-500" />
+                </div>
                 <div class="aspect-video bg-muted">
                     <img
                         v-if="video.thumbnail_url"
