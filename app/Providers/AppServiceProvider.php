@@ -18,6 +18,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(RssFetcher::class, fn () => new RssFetcher(
             ttlMinutes: (int) config('services.youtube.rss_cache_ttl', 30),
+            poolChunkSize: max(1, (int) config('services.youtube.rss_pool_chunk', 20)),
         ));
     }
 

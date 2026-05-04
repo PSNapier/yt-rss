@@ -168,3 +168,18 @@ test('fetchForGroup logs failure and leaves last_fetched_at unchanged on http er
     expect($result['failed'])->toBe(1);
     expect($channel->fresh()->last_fetched_at)->toBeNull();
 });
+
+test('fetchForGroup processes many channels in pool chunks', function () {
+    $user = User::factory()->create();
+    $group = ChannelGroup::factory()->for($user)->create();
+    $channels = Channel::factory()->count(25)->create(['last_fetched_at' => null]);
+    $group->channels()->attach($channels->pluck('id')->all());
+
+    Http::fake(['*' => Http::response(sampleRss(), 200)]);
+
+    $result = (new RssFetcher(poolChunkSize: 5))->fetchForGroup($group);
+
+    expect($result['fetched'])->toBe(25);
+    expect($result['failed'])->toBe(0);
+    Http::assertSentCount(25);
+});

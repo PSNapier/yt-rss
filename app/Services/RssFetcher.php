@@ -16,9 +16,14 @@ class RssFetcher
 {
     public function __construct(
         protected int $ttlMinutes = 30,
+        protected int $poolChunkSize = 20,
         protected float $connectTimeoutSeconds = 2.0,
         protected float $timeoutSeconds = 3.0,
-    ) {}
+    ) {
+        if ($this->poolChunkSize < 1) {
+            $this->poolChunkSize = 1;
+        }
+    }
 
     /**
      * Fetch RSS for all channels in a group, refreshing stale ones.
@@ -37,40 +42,42 @@ class RssFetcher
             return ['fetched' => 0, 'failed' => 0, 'skipped' => $channels->count()];
         }
 
-        $responses = Http::pool(fn (Pool $pool) => $stale->map(
-            fn (Channel $c) => $pool
-                ->as((string) $c->id)
-                ->connectTimeout($this->connectTimeoutSeconds)
-                ->timeout($this->timeoutSeconds)
-                ->get($c->rssUrl())
-        )->all());
-
         $fetched = 0;
         $failed = 0;
 
-        foreach ($stale as $channel) {
-            $resp = $responses[(string) $channel->id] ?? null;
+        foreach ($stale->chunk($this->poolChunkSize) as $batch) {
+            $responses = Http::pool(fn (Pool $pool) => $batch->map(
+                fn (Channel $c) => $pool
+                    ->as((string) $c->id)
+                    ->connectTimeout($this->connectTimeoutSeconds)
+                    ->timeout($this->timeoutSeconds)
+                    ->get($c->rssUrl())
+            )->all());
 
-            if (! $resp instanceof Response || ! $resp->successful()) {
-                $failed++;
-                Log::warning('RSS fetch failed', [
-                    'channel_id' => $channel->channel_id,
-                    'status' => $resp instanceof Response ? $resp->status() : 'no_response',
-                ]);
+            foreach ($batch as $channel) {
+                $resp = $responses[(string) $channel->id] ?? null;
 
-                continue;
-            }
+                if (! $resp instanceof Response || ! $resp->successful()) {
+                    $failed++;
+                    Log::warning('RSS fetch failed', [
+                        'channel_id' => $channel->channel_id,
+                        'status' => $resp instanceof Response ? $resp->status() : 'no_response',
+                    ]);
 
-            try {
-                $this->ingest($channel, $resp->body());
-                $channel->forceFill(['last_fetched_at' => now()])->save();
-                $fetched++;
-            } catch (\Throwable $e) {
-                $failed++;
-                Log::warning('RSS parse failed', [
-                    'channel_id' => $channel->channel_id,
-                    'error' => $e->getMessage(),
-                ]);
+                    continue;
+                }
+
+                try {
+                    $this->ingest($channel, $resp->body());
+                    $channel->forceFill(['last_fetched_at' => now()])->save();
+                    $fetched++;
+                } catch (\Throwable $e) {
+                    $failed++;
+                    Log::warning('RSS parse failed', [
+                        'channel_id' => $channel->channel_id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
         }
 

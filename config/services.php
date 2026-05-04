@@ -38,6 +38,8 @@ return [
     'youtube' => [
         'api_key' => env('YOUTUBE_API_KEY'),
         'rss_cache_ttl' => env('RSS_CACHE_TTL', 30),
+        /** Concurrent RSS URLs per Http::pool batch (whole group can still be large; lowers timeouts / 429s). */
+        'rss_pool_chunk' => (int) env('RSS_POOL_CHUNK', 20),
     ],
 
 ];
