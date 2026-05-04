@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { Head, router, usePage } from '@inertiajs/vue3';
+import { MoreVertical } from 'lucide-vue-next';
+import { onMounted, onUnmounted, reactive, ref } from 'vue';
+import GroupPagesNav from '@/components/GroupPagesNav.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -8,10 +12,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import groups from '@/routes/groups';
-import videos from '@/routes/videos';
-import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { MoreVertical } from 'lucide-vue-next';
-import { onMounted, onUnmounted, reactive, ref } from 'vue';
+import videoRoutes from '@/routes/videos';
 
 interface Channel {
     id: number;
@@ -77,15 +78,21 @@ const openCtx = (event: MouseEvent, video: Video) => {
 
 const setState = (youtubeVideoId: string, state: 'watched' | 'hidden' | null) => {
     const item = items.find((v) => v.youtube_video_id === youtubeVideoId);
-    if (item) item.user_state = state;
+
+    if (item) {
+item.user_state = state;
+}
 
     if (state === 'hidden') {
         const idx = items.findIndex((v) => v.youtube_video_id === youtubeVideoId);
-        if (idx !== -1) items.splice(idx, 1);
+
+        if (idx !== -1) {
+items.splice(idx, 1);
+}
     }
 
     router.post(
-        videos.state.store(youtubeVideoId).url,
+        videoRoutes.state.store(youtubeVideoId).url,
         { state },
         { preserveScroll: true, preserveState: true },
     );
@@ -95,6 +102,7 @@ const onCardClick = (video: Video) => {
     if (video.user_state !== 'watched') {
         setState(video.youtube_video_id, 'watched');
     }
+
     window.open(`https://www.youtube.com/watch?v=${video.youtube_video_id}`, '_blank', 'noopener');
 };
 
@@ -109,8 +117,12 @@ let observer: IntersectionObserver | null = null;
 const page = usePage();
 
 const loadMore = async () => {
-    if (loadingMore.value || !nextUrl.value) return;
+    if (loadingMore.value || !nextUrl.value) {
+return;
+}
+
     loadingMore.value = true;
+
     try {
         const res = await fetch(nextUrl.value, {
             headers: {
@@ -121,10 +133,18 @@ const loadMore = async () => {
                 Accept: 'text/html, application/xhtml+xml',
             },
         });
-        if (!res.ok) return;
+
+        if (!res.ok) {
+return;
+}
+
         const json = await res.json();
         const data = json?.props?.videos as CursorPaginator<Video> | undefined;
-        if (!data) return;
+
+        if (!data) {
+return;
+}
+
         items.push(...data.data);
         nextUrl.value = data.next_page_url;
     } finally {
@@ -137,9 +157,14 @@ onMounted(() => {
     document.addEventListener('scroll', closeCtx, { passive: true });
 
     observer = new IntersectionObserver((entries) => {
-        if (entries.some((e) => e.isIntersecting)) loadMore();
+        if (entries.some((e) => e.isIntersecting)) {
+loadMore();
+}
     });
-    if (sentinel.value) observer.observe(sentinel.value);
+
+    if (sentinel.value) {
+observer.observe(sentinel.value);
+}
 });
 
 onUnmounted(() => {
@@ -150,6 +175,7 @@ onUnmounted(() => {
 
 const formatDate = (iso: string) => {
     const d = new Date(iso);
+
     return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
@@ -159,12 +185,10 @@ const formatDate = (iso: string) => {
     <Head :title="group.name" />
 
     <div class="flex h-full flex-1 flex-col gap-4 p-4">
-        <div class="flex items-end justify-between gap-2">
+        <GroupPagesNav current="feed" :group-id="group.id" />
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <Heading :title="group.name" :description="`Latest videos from channels in this group.`" />
-            <div class="flex gap-2">
-                <Link :href="groups.channels.index(group.id).url">
-                    <Button variant="outline">Manage channels</Button>
-                </Link>
+            <div class="flex shrink-0 gap-2 sm:pb-0.5">
                 <Button @click="refreshFeed">Refresh feed</Button>
             </div>
         </div>

@@ -24,6 +24,8 @@ test('user sees only their own groups', function () {
         fn ($page) => $page->component('Groups/Index')
             ->has('groups', 1)
             ->where('groups.0.name', 'Tech')
+            ->has('channelGroups', 1)
+            ->where('channelGroups.0.name', 'Tech')
     );
 });
 

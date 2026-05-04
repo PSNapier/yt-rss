@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { Head, Link, useForm, router } from '@inertiajs/vue3';
+import { ref, useTemplateRef } from 'vue';
+import GroupPagesNav from '@/components/GroupPagesNav.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import groupRoutes from '@/routes/groups';
-import { Head, Link, useForm, router } from '@inertiajs/vue3';
 
 interface Group {
     id: number;
@@ -30,13 +32,51 @@ const submit = () => {
 
 const rename = (group: Group) => {
     const next = window.prompt('Rename group', group.name);
-    if (!next || next === group.name) return;
+
+    if (!next || next === group.name) {
+return;
+}
+
     router.patch(groupRoutes.update(group.id).url, { name: next }, { preserveScroll: true });
 };
 
 const destroy = (group: Group) => {
-    if (!window.confirm(`Delete group "${group.name}"?`)) return;
+    if (!window.confirm(`Delete group "${group.name}"?`)) {
+return;
+}
+
     router.delete(groupRoutes.destroy(group.id).url);
+};
+
+const globalImportInput = useTemplateRef<HTMLInputElement>('globalImportInput');
+const globalImportError = ref<string | null>(null);
+
+const openGlobalImport = () => {
+    globalImportError.value = null;
+    globalImportInput.value?.click();
+};
+
+const onGlobalImportFile = (e: Event) => {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+
+    if (!file) {
+        return;
+    }
+
+    globalImportError.value = null;
+    const data = new FormData();
+    data.append('file', file);
+    router.post(groupRoutes.importAll().url, data, {
+        forceFormData: true,
+        preserveScroll: true,
+        onError: (errors) => {
+            globalImportError.value = (errors.file as string) ?? 'Import failed.';
+        },
+        onFinish: () => {
+            input.value = '';
+        },
+    });
 };
 </script>
 
@@ -44,7 +84,24 @@ const destroy = (group: Group) => {
     <Head title="Groups" />
 
     <div class="flex h-full flex-1 flex-col gap-6 p-4">
+        <GroupPagesNav current="index" />
         <Heading title="Channel Groups" description="Organize YouTube channels into custom feeds." />
+
+        <div class="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" as-child>
+                <a :href="groupRoutes.exportAll().url" download>Export all groups (JSON)</a>
+            </Button>
+            <input
+                ref="globalImportInput"
+                type="file"
+                accept=".json,.txt,application/json,text/plain"
+                class="sr-only"
+                aria-label="Import all groups JSON file"
+                @change="onGlobalImportFile"
+            />
+            <Button type="button" variant="outline" @click="openGlobalImport">Import all groups</Button>
+        </div>
+        <p v-if="globalImportError" class="text-sm text-destructive">{{ globalImportError }}</p>
 
         <form class="flex gap-2" @submit.prevent="submit">
             <Input v-model="form.name" placeholder="New group name" class="max-w-sm" />

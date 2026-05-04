@@ -3,14 +3,20 @@
 use App\Models\Channel;
 use App\Models\ChannelGroup;
 use App\Models\User;
+use App\Models\UserVideoState;
 use App\Services\RssFetcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
 
-function sampleRss(string $videoId = 'dQw4w9WgXcQ', string $channelId = 'UCuAXFkgsw1L7xaCfnd5JJOw'): string
-{
+function sampleRss(
+    string $videoId = 'dQw4w9WgXcQ',
+    string $channelId = 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    ?string $alternateHref = null,
+): string {
+    $href = $alternateHref ?? 'https://www.youtube.com/watch?v='.$videoId;
+
     return <<<XML
 <?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"
@@ -23,6 +29,7 @@ function sampleRss(string $videoId = 'dQw4w9WgXcQ', string $channelId = 'UCuAXFk
     <yt:videoId>{$videoId}</yt:videoId>
     <yt:channelId>{$channelId}</yt:channelId>
     <title>Sample Video Title</title>
+    <link rel="alternate" href="{$href}"/>
     <published>2026-05-01T10:00:00+00:00</published>
     <media:group>
       <media:thumbnail url="https://i.ytimg.com/vi/{$videoId}/hqdefault.jpg" />
@@ -53,6 +60,51 @@ test('upserts videos on re-ingest (no duplicates)', function () {
     $fetcher->ingest($channel, sampleRss());
 
     expect($channel->videos()->count())->toBe(1);
+});
+
+test('skips shorts and does not store them', function () {
+    $channel = Channel::factory()->create();
+
+    $count = (new RssFetcher)->ingest(
+        $channel,
+        sampleRss('ssDbeb9vB6g', 'UCuAXFkgsw1L7xaCfnd5JJOw', 'https://www.youtube.com/shorts/ssDbeb9vB6g')
+    );
+
+    expect($count)->toBe(0);
+    $this->assertDatabaseCount('videos', 0);
+});
+
+test('deletes existing row when feed entry is a short', function () {
+    $channel = Channel::factory()->create();
+
+    $fetcher = new RssFetcher;
+    $fetcher->ingest($channel, sampleRss('ssDbeb9vB6g'));
+    expect($channel->videos()->count())->toBe(1);
+
+    $fetcher->ingest(
+        $channel,
+        sampleRss('ssDbeb9vB6g', 'UCuAXFkgsw1L7xaCfnd5JJOw', 'https://www.youtube.com/shorts/ssDbeb9vB6g')
+    );
+
+    expect($channel->fresh()->videos()->count())->toBe(0);
+});
+
+test('deletes user video state when removing a short from RSS', function () {
+    $user = User::factory()->create();
+    $channel = Channel::factory()->create();
+
+    (new RssFetcher)->ingest($channel, sampleRss('ssDbeb9vB6g'));
+    UserVideoState::factory()->for($user)->create([
+        'youtube_video_id' => 'ssDbeb9vB6g',
+        'state' => UserVideoState::STATE_WATCHED,
+    ]);
+
+    (new RssFetcher)->ingest(
+        $channel,
+        sampleRss('ssDbeb9vB6g', 'UCuAXFkgsw1L7xaCfnd5JJOw', 'https://www.youtube.com/shorts/ssDbeb9vB6g')
+    );
+
+    expect(UserVideoState::query()->where('youtube_video_id', 'ssDbeb9vB6g')->count())->toBe(0);
 });
 
 test('fetchForGroup updates last_fetched_at on success', function () {

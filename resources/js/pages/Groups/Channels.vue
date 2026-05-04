@@ -1,12 +1,13 @@
 <script setup lang="ts">
+import { Head, router, useForm } from '@inertiajs/vue3';
+import { Star } from 'lucide-vue-next';
+import { ref, useTemplateRef, watch } from 'vue';
+import GroupPagesNav from '@/components/GroupPagesNav.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import groups from '@/routes/groups';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { Star } from 'lucide-vue-next';
-import { ref, watch } from 'vue';
 
 interface Channel {
     id: number;
@@ -37,7 +38,10 @@ const submitId = () => {
 };
 
 const remove = (channel: Channel) => {
-    if (!window.confirm(`Remove ${channel.name} from this group?`)) return;
+    if (!window.confirm(`Remove ${channel.name} from this group?`)) {
+        return;
+    }
+
     router.delete(groups.channels.destroy([props.group.id, channel.id]).url, { preserveScroll: true });
 };
 
@@ -50,15 +54,19 @@ watch(
     () => props.channels,
     (channels) => {
         const next: Record<number, string> = { ...draftNames.value };
+
         for (const c of channels) {
             next[c.id] = c.name;
         }
+
         for (const id of Object.keys(next)) {
             const numId = Number(id);
+
             if (!channels.some((c) => c.id === numId)) {
                 delete next[numId];
             }
         }
+
         draftNames.value = next;
         nameError.value = null;
         nameErrorChannelId.value = null;
@@ -66,12 +74,44 @@ watch(
     { immediate: true, deep: true },
 );
 
+const importFileInput = useTemplateRef<HTMLInputElement>('importFileInput');
+const importFileError = ref<string | null>(null);
+
+const openImportDialog = () => {
+    importFileError.value = null;
+    importFileInput.value?.click();
+};
+
+const onImportFile = (e: Event) => {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+
+    if (!file) {
+        return;
+    }
+
+    importFileError.value = null;
+    const data = new FormData();
+    data.append('file', file);
+    router.post(groups.channels.import(props.group.id).url, data, {
+        forceFormData: true,
+        preserveScroll: true,
+        onError: (errors) => {
+            importFileError.value = (errors.file as string) ?? 'Import failed.';
+        },
+        onFinish: () => {
+            input.value = '';
+        },
+    });
+};
+
 const togglingFavoriteId = ref<number | null>(null);
 
 const toggleFavorite = (channel: Channel) => {
     if (togglingFavoriteId.value !== null) {
         return;
     }
+
     togglingFavoriteId.value = channel.id;
     router.patch(
         groups.channels.update([props.group.id, channel.id]).url,
@@ -88,13 +128,17 @@ const toggleFavorite = (channel: Channel) => {
 const saveChannelName = (channel: Channel) => {
     const raw = draftNames.value[channel.id] ?? '';
     const name = raw.trim();
+
     if (name === channel.name) {
         return;
     }
+
     if (!name) {
         draftNames.value[channel.id] = channel.name;
+
         return;
     }
+
     nameError.value = null;
     nameErrorChannelId.value = null;
     savingChannelId.value = channel.id;
@@ -119,15 +163,28 @@ const saveChannelName = (channel: Channel) => {
     <Head :title="`Channels - ${group.name}`" />
 
     <div class="flex h-full flex-1 flex-col gap-6 p-4">
-        <div class="flex items-end justify-between">
+        <GroupPagesNav current="channels" :group-id="group.id" />
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <Heading
                 :title="`${group.name} channels`"
                 description="Add channels with a YouTube channel ID (UC…). Rename, favorite, or remove below."
             />
-            <Link :href="groups.show(group.id).url">
-                <Button variant="outline">Back to feed</Button>
-            </Link>
+            <div class="flex flex-wrap items-center gap-2 sm:shrink-0">
+                <Button variant="outline" as-child>
+                    <a :href="groups.channels.export(group.id).url" download>Export JSON</a>
+                </Button>
+                <input
+                    ref="importFileInput"
+                    type="file"
+                    accept=".json,application/json,text/plain"
+                    class="sr-only"
+                    aria-label="Import channels JSON file"
+                    @change="onImportFile"
+                />
+                <Button type="button" variant="outline" @click="openImportDialog">Import JSON</Button>
+            </div>
         </div>
+        <p v-if="importFileError" class="text-sm text-destructive">{{ importFileError }}</p>
 
         <form class="flex max-w-xl flex-col gap-4 rounded-xl border p-4" @submit.prevent="submitId">
             <div class="grid gap-2">

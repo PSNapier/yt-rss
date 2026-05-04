@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\ChannelGroup;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -42,6 +43,22 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user(),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            'channelGroups' => static function () use ($request) {
+                $user = $request->user();
+                if ($user === null) {
+                    return [];
+                }
+
+                return $user->channelGroups()
+                    ->orderBy('name')
+                    ->get(['id', 'name'])
+                    ->map(fn (ChannelGroup $group) => [
+                        'id' => $group->id,
+                        'name' => $group->name,
+                    ])
+                    ->values()
+                    ->all();
+            },
         ];
     }
 }

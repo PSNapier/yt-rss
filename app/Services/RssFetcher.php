@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Channel;
 use App\Models\ChannelGroup;
+use App\Models\UserVideoState;
 use App\Models\Video;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Pool;
@@ -127,6 +128,14 @@ class RssFetcher
                 continue;
             }
 
+            $alternateHref = $this->entryAlternateHref($entry);
+            if ($this->alternateHrefIsShort($alternateHref)) {
+                UserVideoState::query()->where('youtube_video_id', $videoId)->delete();
+                Video::query()->where('youtube_video_id', $videoId)->delete();
+
+                continue;
+            }
+
             $title = (string) ($entry->title ?? '');
             $publishedAt = isset($entry->published)
                 ? CarbonImmutable::parse((string) $entry->published)
@@ -152,5 +161,46 @@ class RssFetcher
         }
 
         return $count;
+    }
+
+    /**
+     * Atom alternate link for the video (watch or shorts URL).
+     */
+    protected function entryAlternateHref(\SimpleXMLElement $entry): ?string
+    {
+        if (! isset($entry->link)) {
+            return null;
+        }
+
+        foreach ($entry->link as $link) {
+            $attrs = $link->attributes();
+            if (! isset($attrs['rel'], $attrs['href'])) {
+                continue;
+            }
+
+            if ((string) $attrs['rel'] !== 'alternate') {
+                continue;
+            }
+
+            $href = trim((string) $attrs['href']);
+
+            return $href !== '' ? $href : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * True when alternate link path contains `/shorts/` (YouTube Shorts feed entries).
+     */
+    protected function alternateHrefIsShort(?string $href): bool
+    {
+        if ($href === null || $href === '') {
+            return false;
+        }
+
+        $path = parse_url($href, PHP_URL_PATH) ?? '';
+
+        return str_contains($path, '/shorts/');
     }
 }

@@ -19,6 +19,7 @@ declare module '@inertiajs/core' {
             name: string;
             auth: Auth;
             sidebarOpen: boolean;
+            channelGroups: Array<{ id: number; name: string }>;
             [key: string]: unknown;
         };
     }
