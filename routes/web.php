@@ -5,6 +5,7 @@ use App\Http\Controllers\ChannelController;
 use App\Http\Controllers\ChannelGroupController;
 use App\Http\Controllers\GroupChannelImportExportController;
 use App\Http\Controllers\GroupFeedController;
+use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\VideoStateController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Features;
@@ -23,6 +24,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('groups/{group}', [GroupFeedController::class, 'show'])->name('groups.show');
     Route::post('groups/{group}/refresh', [GroupFeedController::class, 'refresh'])->name('groups.refresh');
+
+    Route::get('channels/search', [ChannelController::class, 'search'])->name('channels.search');
+
+    Route::get('subscriptions', [SubscriptionController::class, 'index'])->name('subscriptions.index');
+    Route::post('subscriptions', [SubscriptionController::class, 'store'])->name('subscriptions.store');
+    Route::patch('subscriptions/{channel}/groups', [SubscriptionController::class, 'updateGroups'])->name('subscriptions.update-groups');
+    Route::patch('subscriptions/{channel}/favorite', [SubscriptionController::class, 'toggleFavorite'])->name('subscriptions.toggle-favorite');
+    Route::delete('subscriptions/{channel}', [SubscriptionController::class, 'destroy'])->name('subscriptions.destroy');
 
     Route::get('groups/{group}/channels', [ChannelController::class, 'index'])->name('groups.channels.index');
     Route::get('groups/{group}/channels/export', [GroupChannelImportExportController::class, 'export'])->name('groups.channels.export');

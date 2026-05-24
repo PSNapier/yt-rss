@@ -25,7 +25,6 @@ class Channel extends Model
     public function channelGroups(): BelongsToMany
     {
         return $this->belongsToMany(ChannelGroup::class, 'channel_group_channel')
-            ->withPivot('is_favorite')
             ->withTimestamps();
     }
 

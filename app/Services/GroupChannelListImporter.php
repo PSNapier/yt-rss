@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Channel;
 use App\Models\ChannelGroup;
+use Illuminate\Support\Facades\DB;
 
 class GroupChannelListImporter
 {
@@ -71,15 +72,19 @@ class GroupChannelListImporter
 
             $exists = $group->channels()->where('channels.id', $channel->id)->exists();
             if ($exists) {
-                $group->channels()->updateExistingPivot($channel->id, [
-                    'is_favorite' => $isFavorite,
-                ]);
                 $updated++;
             } else {
-                $group->channels()->attach($channel->id, [
-                    'is_favorite' => $isFavorite,
-                ]);
+                $group->channels()->attach($channel->id);
                 $added++;
+            }
+
+            if ($isFavorite) {
+                DB::table('user_channel_favorites')->insertOrIgnore([
+                    'user_id' => $group->user_id,
+                    'channel_id' => $channel->id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
             }
         }
 

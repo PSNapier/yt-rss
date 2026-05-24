@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { Monitor, Moon, Sun } from 'lucide-vue-next';
+import { IconDeviceDesktop, IconMoon, IconSun } from '@tabler/icons-vue';
 import { useAppearance } from '@/composables/useAppearance';
 
 const { appearance, updateAppearance } = useAppearance();
 
 const tabs = [
-    { value: 'light', Icon: Sun, label: 'Light' },
-    { value: 'dark', Icon: Moon, label: 'Dark' },
-    { value: 'system', Icon: Monitor, label: 'System' },
+    { value: 'light', Icon: IconSun, label: 'Light' },
+    { value: 'dark', Icon: IconMoon, label: 'Dark' },
+    { value: 'system', Icon: IconDeviceDesktop, label: 'System' },
 ] as const;
 </script>
 

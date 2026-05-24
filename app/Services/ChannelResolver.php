@@ -26,7 +26,9 @@ class ChannelResolver
             throw new \InvalidArgumentException('Channel ID must look like UC followed by 22 chars.');
         }
 
-        $name = $this->lookupChannelName($channelId) ?? $channelId;
+        $name = $this->lookupChannelNameFromRss($channelId)
+            ?? $this->lookupChannelName($channelId)
+            ?? $channelId;
 
         return [
             'channel_id' => $channelId,
@@ -104,6 +106,43 @@ class ChannelResolver
         }
 
         return '@'.ltrim($input, '@');
+    }
+
+    public function lookupChannelNameFromRss(string $channelId): ?string
+    {
+        try {
+            $ctx = stream_context_create([
+                'http' => [
+                    'header' => 'User-Agent: Mozilla/5.0 (compatible; RSS reader)',
+                    'timeout' => 10,
+                ],
+                'ssl' => [
+                    'verify_peer' => true,
+                    'verify_peer_name' => true,
+                ],
+            ]);
+
+            $xml = @file_get_contents($this->rssUrl($channelId), false, $ctx);
+
+            if ($xml === false || $xml === '') {
+                return null;
+            }
+
+            $previous = libxml_use_internal_errors(true);
+            $feed = simplexml_load_string($xml);
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+
+            if ($feed === false || ! isset($feed->title)) {
+                return null;
+            }
+
+            $title = trim((string) $feed->title);
+
+            return $title !== '' ? $title : null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     protected function lookupChannelName(string $channelId): ?string

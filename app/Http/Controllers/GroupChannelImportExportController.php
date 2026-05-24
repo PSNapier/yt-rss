@@ -7,20 +7,27 @@ use App\Models\Channel;
 use App\Models\ChannelGroup;
 use App\Services\GroupChannelListImporter;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class GroupChannelImportExportController extends Controller
 {
-    public function export(ChannelGroup $group): Response
+    public function export(Request $request, ChannelGroup $group): Response
     {
         $this->authorize('view', $group);
 
         $channels = $group->channels()
-            ->withPivot('is_favorite')
             ->orderBy('channels.name')
             ->get(['channels.id', 'channels.channel_id', 'channels.name']);
+
+        $favoriteIds = array_flip(
+            $request->user()->favoritedChannels()
+                ->whereIn('channels.id', $channels->pluck('id')->all())
+                ->pluck('channels.id')
+                ->all()
+        );
 
         $payload = [
             'format' => 'yt-rss-group-channels',
@@ -32,7 +39,7 @@ class GroupChannelImportExportController extends Controller
                 ->map(fn (Channel $channel) => [
                     'channel_id' => $channel->channel_id,
                     'name' => $channel->name,
-                    'is_favorite' => (bool) $channel->pivot->is_favorite,
+                    'is_favorite' => isset($favoriteIds[$channel->id]),
                 ])
                 ->values()
                 ->all(),

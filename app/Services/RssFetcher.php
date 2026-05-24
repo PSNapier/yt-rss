@@ -119,10 +119,12 @@ class RssFetcher
         $namespaces = $feed->getNamespaces(true);
         $count = 0;
 
-        if (! isset($feed->title) || trim((string) $feed->title) === '') {
-            // skip
-        } elseif ($channel->name === '' || $channel->name === null) {
-            $channel->name = (string) $feed->title;
+        if (isset($feed->title)) {
+            $title = trim((string) $feed->title);
+
+            if ($title !== '' && $channel->name !== $title) {
+                $channel->name = $title;
+            }
         }
 
         foreach ($feed->entry ?? [] as $entry) {

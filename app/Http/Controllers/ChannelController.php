@@ -5,9 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Channel;
 use App\Models\ChannelGroup;
 use App\Services\ChannelResolver;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Arr;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -19,29 +19,50 @@ class ChannelController extends Controller
         $this->authorize('view', $group);
 
         $channels = $group->channels()
-            ->withPivot('is_favorite')
-            ->orderByDesc('channel_group_channel.is_favorite')
             ->orderBy('channels.name')
             ->get([
                 'channels.id',
                 'channels.channel_id',
                 'channels.name',
                 'channels.last_fetched_at',
-            ])
-            ->map(fn (Channel $channel) => [
-                'id' => $channel->id,
-                'channel_id' => $channel->channel_id,
-                'name' => $channel->name,
-                'last_fetched_at' => $channel->last_fetched_at,
-                'is_favorite' => (bool) $channel->pivot->is_favorite,
-            ])
+            ]);
+
+        $favoriteIds = array_flip(
+            $request->user()->favoritedChannels()
+                ->whereIn('channels.id', $channels->pluck('id')->all())
+                ->pluck('channels.id')
+                ->all()
+        );
+
+        $mapped = $channels->map(fn (Channel $channel) => [
+            'id' => $channel->id,
+            'channel_id' => $channel->channel_id,
+            'name' => $channel->name,
+            'last_fetched_at' => $channel->last_fetched_at,
+            'is_favorite' => isset($favoriteIds[$channel->id]),
+        ])
+            ->sortByDesc('is_favorite')
             ->values()
             ->all();
 
         return Inertia::render('Groups/Channels', [
             'group' => $group->only(['id', 'name']),
-            'channels' => $channels,
+            'channels' => $mapped,
         ]);
+    }
+
+    public function search(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'q' => 'required|string|min:2|max:100',
+        ]);
+
+        $results = Channel::where('name', 'like', '%' . $validated['q'] . '%')
+            ->orderBy('name')
+            ->limit(10)
+            ->get(['id', 'channel_id', 'name']);
+
+        return response()->json($results);
     }
 
     public function store(Request $request, ChannelGroup $group, ChannelResolver $resolver): RedirectResponse
@@ -49,10 +70,17 @@ class ChannelController extends Controller
         $this->authorize('update', $group);
 
         $validated = $request->validate([
-            'mode' => 'required|in:handle,id',
-            'value' => 'required|string|max:255',
-            'custom_name' => 'nullable|string|max:255',
+            'mode' => 'required|in:handle,id,existing',
+            'value' => 'required_unless:mode,existing|string|max:255|nullable',
+            'channel_id' => 'required_if:mode,existing|string|max:255|nullable',
         ]);
+
+        if ($validated['mode'] === 'existing') {
+            $channel = Channel::where('channel_id', $validated['channel_id'])->firstOrFail();
+            $group->channels()->syncWithoutDetaching([$channel->id]);
+
+            return back();
+        }
 
         try {
             $info = $validated['mode'] === 'handle'
@@ -66,11 +94,6 @@ class ChannelController extends Controller
             ['channel_id' => $info['channel_id']],
             ['name' => $info['name'], 'rss_url' => $info['rss_url']]
         );
-
-        $customName = trim((string) ($validated['custom_name'] ?? ''));
-        if ($customName !== '') {
-            $channel->update(['name' => $customName]);
-        }
 
         $group->channels()->syncWithoutDetaching([$channel->id]);
 
@@ -86,24 +109,14 @@ class ChannelController extends Controller
         }
 
         $validated = $request->validate([
-            'name' => 'sometimes|required|string|max:255',
-            'is_favorite' => 'sometimes|boolean',
+            'is_favorite' => 'required|boolean',
         ]);
 
-        if (! Arr::hasAny($validated, ['name', 'is_favorite'])) {
-            throw ValidationException::withMessages([
-                'name' => __('Provide a display name or favorite preference.'),
-            ]);
-        }
-
-        if (array_key_exists('name', $validated)) {
-            $channel->update(['name' => $validated['name']]);
-        }
-
-        if (array_key_exists('is_favorite', $validated)) {
-            $group->channels()->updateExistingPivot($channel->id, [
-                'is_favorite' => $validated['is_favorite'],
-            ]);
+        $user = $request->user();
+        if ($validated['is_favorite']) {
+            $user->favoritedChannels()->syncWithoutDetaching([$channel->id]);
+        } else {
+            $user->favoritedChannels()->detach($channel->id);
         }
 
         return back();

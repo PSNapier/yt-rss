@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
-import { BookOpen, Folder, Menu, Rss, Search } from 'lucide-vue-next';
+import { IconBook, IconFolder, IconMenu2, IconRss, IconSearch } from '@tabler/icons-vue';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
@@ -57,7 +57,7 @@ const mainNavItems: NavItem[] = [
     {
         title: 'Channel groups',
         href: groups.index(),
-        icon: Rss,
+        icon: IconRss,
     },
 ];
 
@@ -65,12 +65,12 @@ const rightNavItems: NavItem[] = [
     {
         title: 'Repository',
         href: 'https://github.com/laravel/vue-starter-kit',
-        icon: Folder,
+        icon: IconFolder,
     },
     {
         title: 'Documentation',
         href: 'https://laravel.com/docs/starter-kits#vue',
-        icon: BookOpen,
+        icon: IconBook,
     },
 ];
 </script>
@@ -88,7 +88,7 @@ const rightNavItems: NavItem[] = [
                                 size="icon"
                                 class="mr-2 h-9 w-9"
                             >
-                                <Menu class="h-5 w-5" />
+                                <IconMenu2 class="h-5 w-5" />
                             </Button>
                         </SheetTrigger>
                         <SheetContent side="left" class="w-[300px] p-6">
@@ -195,7 +195,7 @@ const rightNavItems: NavItem[] = [
                             size="icon"
                             class="group h-9 w-9 cursor-pointer"
                         >
-                            <Search
+                            <IconSearch
                                 class="size-5 opacity-80 group-hover:opacity-100"
                             />
                         </Button>

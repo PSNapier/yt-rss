@@ -21,27 +21,27 @@ class AllGroupsImportExportController extends Controller
 
         $groups = ChannelGroup::query()
             ->where('user_id', $user->id)
-            ->with([
-                'channels' => function ($query): void {
-                    $query->withPivot('is_favorite')->orderBy('channels.name');
-                },
-            ])
+            ->with(['channels' => function ($query): void {
+                $query->orderBy('channels.name');
+            }])
             ->orderBy('name')
             ->get(['id', 'name']);
+
+        $favoriteIds = array_flip(
+            $user->favoritedChannels()->pluck('channels.id')->all()
+        );
 
         $payload = [
             'format' => 'yt-rss-all-groups',
             'version' => 1,
-            'groups' => $groups->map(function (ChannelGroup $group) {
-                $channels = $group->channels;
-
+            'groups' => $groups->map(function (ChannelGroup $group) use ($favoriteIds) {
                 return [
                     'name' => $group->name,
-                    'channels' => $channels
+                    'channels' => $group->channels
                         ->map(fn (Channel $channel) => [
                             'channel_id' => $channel->channel_id,
                             'name' => $channel->name,
-                            'is_favorite' => (bool) $channel->pivot->is_favorite,
+                            'is_favorite' => isset($favoriteIds[$channel->id]),
                         ])
                         ->values()
                         ->all(),

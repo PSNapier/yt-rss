@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
-#[Fillable(['user_id', 'name'])]
+#[Fillable(['user_id', 'name', 'icon'])]
 class ChannelGroup extends Model
 {
     /** @use HasFactory<ChannelGroupFactory> */
@@ -23,7 +23,6 @@ class ChannelGroup extends Model
     public function channels(): BelongsToMany
     {
         return $this->belongsToMany(Channel::class, 'channel_group_channel')
-            ->withPivot('is_favorite')
             ->withTimestamps();
     }
 }
