@@ -1,9 +1,9 @@
 <?php
 
 use App\Http\Controllers\AllGroupsImportExportController;
+use App\Http\Controllers\AllVideosFeedController;
 use App\Http\Controllers\ChannelController;
 use App\Http\Controllers\ChannelGroupController;
-use App\Http\Controllers\GroupChannelImportExportController;
 use App\Http\Controllers\GroupFeedController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\VideoStateController;
@@ -27,18 +27,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('channels/search', [ChannelController::class, 'search'])->name('channels.search');
 
+    Route::get('feed', [AllVideosFeedController::class, 'index'])->name('feed.index');
+
     Route::get('subscriptions', [SubscriptionController::class, 'index'])->name('subscriptions.index');
     Route::post('subscriptions', [SubscriptionController::class, 'store'])->name('subscriptions.store');
     Route::patch('subscriptions/{channel}/groups', [SubscriptionController::class, 'updateGroups'])->name('subscriptions.update-groups');
     Route::patch('subscriptions/{channel}/favorite', [SubscriptionController::class, 'toggleFavorite'])->name('subscriptions.toggle-favorite');
     Route::delete('subscriptions/{channel}', [SubscriptionController::class, 'destroy'])->name('subscriptions.destroy');
-
-    Route::get('groups/{group}/channels', [ChannelController::class, 'index'])->name('groups.channels.index');
-    Route::get('groups/{group}/channels/export', [GroupChannelImportExportController::class, 'export'])->name('groups.channels.export');
-    Route::post('groups/{group}/channels/import', [GroupChannelImportExportController::class, 'import'])->name('groups.channels.import');
-    Route::post('groups/{group}/channels', [ChannelController::class, 'store'])->name('groups.channels.store');
-    Route::patch('groups/{group}/channels/{channel}', [ChannelController::class, 'update'])->name('groups.channels.update');
-    Route::delete('groups/{group}/channels/{channel}', [ChannelController::class, 'destroy'])->name('groups.channels.destroy');
 
     Route::post('videos/{youtubeVideoId}/state', [VideoStateController::class, 'store'])->name('videos.state.store');
 });

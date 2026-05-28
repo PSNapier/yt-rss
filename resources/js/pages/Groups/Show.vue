@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { Head, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { IconEye, IconEyeOff, IconStar, IconStarFilled } from '@tabler/icons-vue';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
-import GroupPagesNav from '@/components/GroupPagesNav.vue';
 import groups from '@/routes/groups';
+import subscriptions from '@/routes/subscriptions';
 import videoRoutes from '@/routes/videos';
 
 interface Channel {
@@ -162,10 +162,8 @@ const groupInitial = computed(() => props.group.name.trim()[0]?.toLocaleUpperCas
     <Head :title="group.name" />
 
     <div class="flex h-full flex-1 flex-col">
-        <!-- Inline page header: sidebar toggle + tab nav -->
         <div class="flex h-12 shrink-0 items-center gap-3 px-4 transition-[height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-10">
             <SidebarTrigger class="-ml-1" />
-            <GroupPagesNav current="feed" :group-id="group.id" />
         </div>
 
         <div class="flex flex-1 flex-col gap-4 p-4 md:p-6">
@@ -217,13 +215,13 @@ const groupInitial = computed(() => props.group.name.trim()[0]?.toLocaleUpperCas
                         </button>
                     </div>
 
-                    <!-- Mark all read (placeholder) -->
-                    <button
-                        class="flex cursor-pointer items-center gap-[7px] rounded-lg px-[14px] py-[9px] text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
+                    <Link
+                        :href="subscriptions.index({ query: { group: group.id } }).url"
+                        class="flex items-center gap-[7px] rounded-lg px-[14px] py-[9px] text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
                         style="background: var(--cherry)"
                     >
-                        Mark all read
-                    </button>
+                        Manage channels
+                    </Link>
                 </div>
             </div>
 

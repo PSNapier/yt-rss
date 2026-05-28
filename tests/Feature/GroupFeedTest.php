@@ -50,13 +50,14 @@ test('feed returns videos sorted newest first and excludes hidden', function () 
     );
 });
 
-test('feed exposes channel_is_favorite when channel is favorited in group', function () {
+test('feed exposes channel_is_favorite when user favorited channel via subscriptions', function () {
     Http::fake(['*' => Http::response('<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>', 200)]);
 
     $user = User::factory()->create();
     $group = ChannelGroup::factory()->for($user)->create();
     $channel = Channel::factory()->create(['last_fetched_at' => now()]);
-    $group->channels()->attach($channel->id, ['is_favorite' => true]);
+    $group->channels()->attach($channel->id);
+    $user->favoritedChannels()->attach($channel->id);
 
     $video = Video::factory()->create([
         'channel_id' => $channel->id,
@@ -69,6 +70,32 @@ test('feed exposes channel_is_favorite when channel is favorited in group', func
             ->component('Groups/Show')
             ->has('videos.data', 1)
             ->where('videos.data.0.youtube_video_id', $video->youtube_video_id)
+            ->where('videos.data.0.channel_is_favorite', true)
+        );
+});
+
+test('favoriting on subscriptions page shows starred videos in group feed', function () {
+    Http::fake(['*' => Http::response('<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>', 200)]);
+
+    $user = User::factory()->create();
+    $group = ChannelGroup::factory()->for($user)->create();
+    $channel = Channel::factory()->create(['last_fetched_at' => now()]);
+    $group->channels()->attach($channel->id);
+
+    Video::factory()->create([
+        'channel_id' => $channel->id,
+        'published_at' => now(),
+    ]);
+
+    $this->actingAs($user)
+        ->patch(route('subscriptions.toggle-favorite', $channel), ['is_favorite' => true])
+        ->assertRedirect();
+
+    $this->actingAs($user)
+        ->get(route('groups.show', $group))
+        ->assertInertia(fn ($page) => $page
+            ->component('Groups/Show')
+            ->has('videos.data', 1)
             ->where('videos.data.0.channel_is_favorite', true)
         );
 });

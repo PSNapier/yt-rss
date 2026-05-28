@@ -24,8 +24,9 @@ test('user can export all groups and channels as json', function () {
     $uc2 = allGroupsTestChannelId('C');
     $ch1 = Channel::factory()->create(['channel_id' => $uc1, 'name' => 'One']);
     $ch2 = Channel::factory()->create(['channel_id' => $uc2, 'name' => 'Two']);
-    $g1->channels()->attach($ch1->id, ['is_favorite' => true]);
-    $g2->channels()->attach($ch2->id, ['is_favorite' => false]);
+    $g1->channels()->attach($ch1->id);
+    $g2->channels()->attach($ch2->id);
+    $user->favoritedChannels()->attach($ch1->id);
 
     $response = $this->actingAs($user)->get(route('groups.export-all'));
 
@@ -79,7 +80,7 @@ test('user can import all groups from global json', function () {
     $p = $a->channels()->first();
     expect($p->channel_id)->toBe($uc1)
         ->and($p->name)->toBe('Ch One')
-        ->and((bool) $p->pivot->is_favorite)->toBeTrue();
+        ->and($user->favoritedChannels()->where('channels.id', $p->id)->exists())->toBeTrue();
 });
 
 test('import merges channels into existing group with same name', function () {
@@ -87,7 +88,7 @@ test('import merges channels into existing group with same name', function () {
     $existing = ChannelGroup::factory()->for($user)->create(['name' => 'Shared']);
     $uc = allGroupsTestChannelId('F');
     $ch = Channel::factory()->create(['channel_id' => $uc]);
-    $existing->channels()->attach($ch->id, ['is_favorite' => false]);
+    $existing->channels()->attach($ch->id);
 
     $json = json_encode([
         'groups' => [
@@ -106,8 +107,7 @@ test('import merges channels into existing group with same name', function () {
         ->assertRedirect();
 
     expect($user->channelGroups()->where('name', 'Shared')->count())->toBe(1);
-    $pivot = $existing->fresh()->channels()->where('channels.id', $ch->id)->first();
-    expect((bool) $pivot->pivot->is_favorite)->toBeTrue();
+    expect($user->favoritedChannels()->where('channels.id', $ch->id)->exists())->toBeTrue();
 });
 
 test('import rejects invalid json', function () {

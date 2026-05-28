@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import { ref, useTemplateRef } from 'vue';
-import GroupPagesNav from '@/components/GroupPagesNav.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import groupRoutes from '@/routes/groups';
+import subscriptions from '@/routes/subscriptions';
 
 interface Group {
     id: number;
@@ -84,7 +84,6 @@ const onGlobalImportFile = (e: Event) => {
     <Head title="Groups" />
 
     <div class="flex h-full flex-1 flex-col gap-6 p-4">
-        <GroupPagesNav current="index" />
         <Heading title="Channel Groups" description="Organize YouTube channels into custom feeds." />
 
         <div class="flex flex-wrap items-center gap-2">
@@ -133,7 +132,7 @@ const onGlobalImportFile = (e: Event) => {
                     <Link :href="groupRoutes.show(group.id).url">
                         <Button variant="outline" size="sm">View feed</Button>
                     </Link>
-                    <Link :href="groupRoutes.channels.index(group.id).url">
+                    <Link :href="subscriptions.index({ query: { group: group.id } }).url">
                         <Button variant="outline" size="sm">Manage channels</Button>
                     </Link>
                 </div>

@@ -23,7 +23,7 @@ return new class extends Migration
         // insert a global favorite record (ignoring duplicates).
         DB::statement("
             INSERT INTO user_channel_favorites (user_id, channel_id, created_at, updated_at)
-            SELECT DISTINCT cg.user_id, cgc.channel_id, NOW(), NOW()
+            SELECT DISTINCT cg.user_id, cgc.channel_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             FROM channel_group_channel cgc
             JOIN channel_groups cg ON cg.id = cgc.channel_group_id
             WHERE cgc.is_favorite = 1
