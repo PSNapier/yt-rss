@@ -100,6 +100,28 @@ test('favoriting on subscriptions page shows starred videos in group feed', func
         );
 });
 
+test('feed paginates fifteen videos per page', function () {
+    Http::fake(['*' => Http::response('<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>', 200)]);
+
+    $user = User::factory()->create();
+    $group = ChannelGroup::factory()->for($user)->create();
+    $channel = Channel::factory()->create(['last_fetched_at' => now()]);
+    $group->channels()->attach($channel);
+
+    Video::factory()->count(16)->create([
+        'channel_id' => $channel->id,
+        'published_at' => now(),
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('groups.show', $group))
+        ->assertInertia(fn ($page) => $page
+            ->component('Groups/Show')
+            ->has('videos.data', 15)
+            ->where('videos.next_page_url', fn ($url) => $url !== null)
+        );
+});
+
 test('refresh route forces RSS fetch', function () {
     Http::fake(['*' => Http::response('<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>', 200)]);
 

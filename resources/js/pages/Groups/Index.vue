@@ -132,9 +132,12 @@ const onGlobalImportFile = (e: Event) => {
                     <Link :href="groupRoutes.show(group.id).url">
                         <Button variant="outline" size="sm">View feed</Button>
                     </Link>
-                    <Link :href="subscriptions.index({ query: { group: group.id } }).url">
+                    <a
+                        :href="`${subscriptions.index().url}#subscription-group-${group.id}`"
+                        data-inertia-link="false"
+                    >
                         <Button variant="outline" size="sm">Manage channels</Button>
-                    </Link>
+                    </a>
                 </div>
             </div>
         </div>

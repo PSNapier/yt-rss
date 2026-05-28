@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { IconChevronDown, IconChevronUp, IconStar, IconStarFilled } from '@tabler/icons-vue';
-import { computed, nextTick, onMounted, ref, useTemplateRef } from 'vue';
+import { computed, ref, useTemplateRef } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -221,23 +221,6 @@ const groupedChannels = computed(() => {
             .filter((c) => c.group_ids.includes(group.id))
             .sort((a, b) => a.name.localeCompare(b.name)),
     }));
-});
-
-onMounted(() => {
-    const groupIdParam = new URLSearchParams(window.location.search).get('group');
-    if (!groupIdParam) {
-        return;
-    }
-
-    const groupId = Number(groupIdParam);
-    if (!Number.isInteger(groupId) || !props.groups.some((g) => g.id === groupId)) {
-        return;
-    }
-
-    sortMode.value = 'by-group';
-    void nextTick(() => {
-        document.getElementById(`subscription-group-${groupId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
 });
 
 // --- Import/Export ---
@@ -485,12 +468,11 @@ const onImportFile = (e: Event) => {
 
                 <!-- By-group view -->
                 <div v-else class="flex flex-col gap-4">
-                    <div
-                        v-for="{ group, channels: groupChannels } in groupedChannels"
-                        :id="`subscription-group-${group.id}`"
-                        :key="group.id"
-                    >
-                        <h4 class="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    <div v-for="{ group, channels: groupChannels } in groupedChannels" :key="group.id">
+                        <h4
+                            :id="`subscription-group-${group.id}`"
+                            class="scroll-mt-6 mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                        >
                             {{ group.name }} ({{ groupChannels.length }})
                         </h4>
                         <ul v-if="groupChannels.length > 0" class="divide-y rounded-xl border">

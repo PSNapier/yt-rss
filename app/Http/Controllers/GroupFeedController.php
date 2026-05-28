@@ -16,7 +16,7 @@ class GroupFeedController extends Controller
     {
         $this->authorize('view', $group);
 
-        $fetcher->fetchForGroup($group);
+        defer(fn () => $fetcher->fetchForGroup($group));
 
         $userId = $request->user()->id;
 
@@ -50,7 +50,7 @@ class GroupFeedController extends Controller
             ->with(['channel:id,channel_id,name'])
             ->orderByDesc('videos.published_at')
             ->orderByDesc('videos.id')
-            ->cursorPaginate(60)
+            ->cursorPaginate(15)
             ->withQueryString();
 
         return Inertia::render('Groups/Show', [

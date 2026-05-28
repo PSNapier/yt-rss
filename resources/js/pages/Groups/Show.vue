@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import { IconEye, IconEyeOff, IconStar, IconStarFilled } from '@tabler/icons-vue';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
@@ -42,6 +42,7 @@ const items = reactive<Video[]>([...props.videos.data]);
 const nextUrl = ref<string | null>(props.videos.next_page_url);
 const loadingMore = ref(false);
 const showWatched = ref(true);
+const olderExpanded = ref(false);
 
 // Right-click context menu
 const ctx = reactive({
@@ -76,9 +77,6 @@ const onCardClick = (video: Video) => {
     window.open(`https://www.youtube.com/watch?v=${video.youtube_video_id}`, '_blank', 'noopener');
 };
 
-// Infinite scroll
-const sentinel = ref<HTMLElement | null>(null);
-let observer: IntersectionObserver | null = null;
 const page = usePage();
 
 const loadMore = async () => {
@@ -108,16 +106,11 @@ const loadMore = async () => {
 onMounted(() => {
     document.addEventListener('click', closeCtx);
     document.addEventListener('scroll', closeCtx, { passive: true });
-    observer = new IntersectionObserver((entries) => {
-        if (entries.some((e) => e.isIntersecting)) loadMore();
-    });
-    if (sentinel.value) observer.observe(sentinel.value);
 });
 
 onUnmounted(() => {
     document.removeEventListener('click', closeCtx);
     document.removeEventListener('scroll', closeCtx);
-    observer?.disconnect();
 });
 
 // Time bucketing
@@ -154,6 +147,42 @@ const buckets = computed(() => {
 
     return sections.filter((s) => s.items.length > 0);
 });
+
+const olderBucket = computed(() => buckets.value.find((b) => b.id === 'older') ?? null);
+const recentBuckets = computed(() => buckets.value.filter((b) => b.id !== 'older'));
+const displayBuckets = computed(() => {
+    const recent = recentBuckets.value;
+    const older = olderBucket.value;
+    if (!older || !olderExpanded.value) {
+        return recent;
+    }
+
+    return [...recent, older];
+});
+
+const showLoadMoreButton = computed(
+    () => (olderBucket.value !== null && !olderExpanded.value) || nextUrl.value !== null,
+);
+
+const loadMoreLabel = computed(() => {
+    if (olderBucket.value && !olderExpanded.value) {
+        const count = olderBucket.value.items.length;
+
+        return `Show older videos (${count})`;
+    }
+
+    return loadingMore.value ? 'Loading…' : 'Load more';
+});
+
+const onLoadMoreClick = () => {
+    if (olderBucket.value && !olderExpanded.value) {
+        olderExpanded.value = true;
+
+        return;
+    }
+
+    loadMore();
+};
 
 const groupInitial = computed(() => props.group.name.trim()[0]?.toLocaleUpperCase() ?? '?');
 </script>
@@ -215,13 +244,14 @@ const groupInitial = computed(() => props.group.name.trim()[0]?.toLocaleUpperCas
                         </button>
                     </div>
 
-                    <Link
-                        :href="subscriptions.index({ query: { group: group.id } }).url"
+                    <a
+                        :href="`${subscriptions.index().url}#subscription-group-${group.id}`"
+                        data-inertia-link="false"
                         class="flex items-center gap-[7px] rounded-lg px-[14px] py-[9px] text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
                         style="background: var(--cherry)"
                     >
                         Manage channels
-                    </Link>
+                    </a>
                 </div>
             </div>
 
@@ -258,7 +288,7 @@ const groupInitial = computed(() => props.group.name.trim()[0]?.toLocaleUpperCas
                 </div>
             </template>
 
-            <section v-for="bucket in buckets" :key="bucket.id" class="mb-8 last:mb-0">
+            <section v-for="bucket in displayBuckets" :key="bucket.id" class="mb-8 last:mb-0">
                 <!-- Sticky section header -->
                 <div class="sticky top-0 z-10 mb-3 flex items-center gap-3 bg-background py-1">
                     <span class="text-[11px] font-bold uppercase tracking-[0.14em] text-foreground">
@@ -329,10 +359,19 @@ const groupInitial = computed(() => props.group.name.trim()[0]?.toLocaleUpperCas
                     </div>
                 </div>
             </section>
+
         </template>
 
-        <div ref="sentinel" class="h-10" />
-        <div v-if="loadingMore" class="text-center text-sm text-muted-foreground">Loading more…</div>
+        <div v-if="showLoadMoreButton" class="flex justify-center pb-4">
+            <button
+                type="button"
+                class="rounded-lg border border-border bg-muted/50 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                :disabled="loadingMore"
+                @click="onLoadMoreClick"
+            >
+                {{ loadMoreLabel }}
+            </button>
+        </div>
 
         <!-- Right-click context menu -->
         <div
