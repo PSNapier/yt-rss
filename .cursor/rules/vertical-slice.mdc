@@ -1,0 +1,60 @@
+---
+description: Vertical slice / tracer bullet strategy for planning and implementation
+alwaysApply: true
+---
+
+# Vertical Slice Implementation
+
+Build thin end-to-end slices that work, then thicken. Avoid completing entire horizontal layers (all backend → all frontend → all tests) before validating anything.
+
+## Plan in Slices, Not Layers
+
+When planning a feature, decompose by **user-observable behavior**, not by architectural layer.
+
+- BAD: `1. Migrations. 2. Models. 3. Controllers. 4. Routes. 5. Blade views. 6. JS. 7. Manual test.`
+- GOOD: `1. Slice A: simplest happy path end-to-end (DB → controller → view, hardcoded if needed). 2. Slice B: add validation + error path. 3. Slice C: edge case X.`
+
+Each slice should be **independently testable in the browser / via tinker** before moving on.
+
+## Tracer Bullet First
+
+First slice = thinnest possible path that touches every layer the feature needs:
+
+- Stub data is fine (hardcoded array, fake response).
+- One field instead of ten.
+- One role/permission case instead of all.
+- No styling polish.
+
+Goal: prove the wiring works. Find integration issues in minute 5, not hour 5.
+
+## Test As You Go
+
+After each slice:
+
+- Run it manually (browser, tinker, artisan command).
+- Check logs / network tab.
+- Confirm DB state if relevant.
+
+Do NOT batch all testing to the end. Bugs found one slice at a time are cheap; bugs found after 6 layers stacked are expensive to localize.
+
+## When To Use Horizontal
+
+Horizontal-first is acceptable only when:
+
+- Pure refactor with no behavior change (and tests already exist).
+- Trivial CRUD scaffold from a generator.
+- Migration-only or config-only change.
+
+Otherwise: default to vertical slices.
+
+## Communicating The Plan
+
+When presenting a plan, structure it as:
+
+```
+Slice 1 (tracer): <user action> → <visible result>. Stubs: <list>.
+Slice 2: <what gets real / what edge case added>.
+Slice 3: ...
+```
+
+Not as a layer checklist.
