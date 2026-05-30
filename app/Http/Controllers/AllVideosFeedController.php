@@ -2,14 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Channel;
 use App\Models\Video;
+use App\Services\RssFetcher;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class AllVideosFeedController extends Controller
 {
-    public function index(Request $request): Response
+    public function index(Request $request, RssFetcher $fetcher): Response
     {
         $user = $request->user();
         $userId = $user->id;
@@ -18,6 +20,10 @@ class AllVideosFeedController extends Controller
             ->join('channel_group_channel as cgc', 'cgc.channel_group_id', '=', 'channel_groups.id')
             ->distinct()
             ->pluck('cgc.channel_id');
+
+        $fetcher->fetchForChannels(
+            Channel::whereIn('id', $subscribedChannelIds)->get()
+        );
 
         $videos = Video::query()
             ->select([

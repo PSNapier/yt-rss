@@ -122,6 +122,42 @@ test('feed paginates fifteen videos per page', function () {
         );
 });
 
+test('visiting feed auto-fetches stale channels', function () {
+    Http::fake(['*' => Http::response('<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>', 200)]);
+
+    $user = User::factory()->create();
+    $group = ChannelGroup::factory()->for($user)->create();
+    $channel = Channel::factory()->create(['last_fetched_at' => null]);
+    $group->channels()->attach($channel);
+
+    $this->actingAs($user)->get(route('groups.show', $group))->assertOk();
+
+    $rssRequests = collect(Http::recorded())
+        ->filter(fn ($pair) => str_contains($pair[0]->url(), 'youtube.com'));
+
+    expect($rssRequests)->toHaveCount(1);
+    $this->assertDatabaseHas('channels', [
+        'id' => $channel->id,
+        'last_fetched_at' => now()->toDateTimeString(),
+    ]);
+});
+
+test('visiting feed skips fetch for recently fetched channels', function () {
+    Http::fake(['*' => Http::response('<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>', 200)]);
+
+    $user = User::factory()->create();
+    $group = ChannelGroup::factory()->for($user)->create();
+    $channel = Channel::factory()->create(['last_fetched_at' => now()]);
+    $group->channels()->attach($channel);
+
+    $this->actingAs($user)->get(route('groups.show', $group))->assertOk();
+
+    $rssRequests = collect(Http::recorded())
+        ->filter(fn ($pair) => str_contains($pair[0]->url(), 'youtube.com'));
+
+    expect($rssRequests)->toHaveCount(0);
+});
+
 test('refresh route forces RSS fetch', function () {
     Http::fake(['*' => Http::response('<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>', 200)]);
 

@@ -12,9 +12,11 @@ use Inertia\Response;
 
 class GroupFeedController extends Controller
 {
-    public function show(Request $request, ChannelGroup $group): Response
+    public function show(Request $request, ChannelGroup $group, RssFetcher $fetcher): Response
     {
         $this->authorize('view', $group);
+
+        $fetcher->fetchForGroup($group);
 
         $userId = $request->user()->id;
 

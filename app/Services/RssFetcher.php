@@ -9,6 +9,7 @@ use App\Models\Video;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -32,8 +33,17 @@ class RssFetcher
      */
     public function fetchForGroup(ChannelGroup $group, bool $force = false): array
     {
-        $channels = $group->channels()->get();
+        return $this->fetchForChannels($group->channels()->get(), $force);
+    }
 
+    /**
+     * Fetch RSS for a collection of channels, refreshing stale ones.
+     *
+     * @param  Collection<int, Channel>  $channels
+     * @return array{fetched: int, failed: int, skipped: int}
+     */
+    public function fetchForChannels(Collection $channels, bool $force = false): array
+    {
         $stale = $channels->filter(
             fn (Channel $c) => $force || $this->isStale($c)
         )->values();
