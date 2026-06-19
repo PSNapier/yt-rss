@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { IconEye, IconEyeOff, IconStarFilled } from '@tabler/icons-vue';
+import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
+import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import videoRoutes from '@/routes/videos';
@@ -122,8 +123,8 @@ function startOfDay(offsetDays: number): Date {
 
 const buckets = computed(() => {
     const today = startOfDay(0);
-    const yesterday = startOfDay(1);
-    const weekStart = startOfDay(5);
+    const yesterday = startOfDay(2);
+    const weekStart = startOfDay(7);
 
     const visible = showWatched.value
         ? items
@@ -159,51 +160,41 @@ const buckets = computed(() => {
 
         <div class="flex flex-1 flex-col gap-4 p-4 md:p-6">
 
-            <!-- Hero card -->
-            <div class="rounded-[14px] border border-border bg-muted/30 p-5">
-                <div class="flex items-center gap-4">
-                    <div
-                        class="flex size-14 shrink-0 items-center justify-center rounded-[13px] text-white"
-                        style="background: linear-gradient(135deg, var(--cherry) 0%, hsl(354 90% 52%) 100%)"
+            <!-- Hero banner -->
+            <div
+                class="flex items-end gap-[22px] rounded-xl p-[26px_28px] text-white"
+                style="background: linear-gradient(180deg, var(--cherry) 0%, var(--cherry-deep) 100%)"
+            >
+                <div
+                    class="flex size-[92px] shrink-0 items-center justify-center rounded-xl bg-white"
+                    style="color: var(--cherry)"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="size-11" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.32 6.32 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.24 8.24 0 0 0 4.83 1.56V6.8a4.85 4.85 0 0 1-1.06-.11z"/>
+                    </svg>
+                </div>
+
+                <div class="min-w-0 flex-1">
+                    <p class="mb-[7px] text-[12px] font-bold uppercase tracking-[0.16em] text-white/70">Feed</p>
+                    <h1 class="text-[40px] font-bold leading-none tracking-[-0.03em] text-white">
+                        All Videos
+                    </h1>
+                </div>
+
+                <div class="flex items-center gap-[10px]">
+                    <button
+                        type="button"
+                        :class="[
+                            'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
+                            showWatched ? 'bg-white' : 'bg-white/10 text-white/90 hover:text-white',
+                        ]"
+                        :style="showWatched ? 'color: var(--cherry)' : ''"
+                        :aria-pressed="showWatched"
+                        @click="showWatched = !showWatched"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" class="size-7" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.32 6.32 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.24 8.24 0 0 0 4.83 1.56V6.8a4.85 4.85 0 0 1-1.06-.11z"/>
-                        </svg>
-                    </div>
-
-                    <div class="min-w-0 flex-1">
-                        <p class="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Feed</p>
-                        <h1 class="text-[28px] font-bold leading-none tracking-[-0.025em] text-foreground">
-                            All Videos
-                        </h1>
-                    </div>
-
-                    <div class="flex items-center gap-2">
-                        <div class="flex rounded-lg bg-muted p-[3px]">
-                            <button
-                                :class="[
-                                    'flex size-[30px] items-center justify-center rounded-[5px] transition-colors',
-                                    showWatched
-                                        ? 'bg-cherry text-white'
-                                        : 'bg-transparent text-muted-foreground hover:text-foreground',
-                                ]"
-                                @click="showWatched = true"
-                            >
-                                <IconEye class="size-[13px]" />
-                            </button>
-                            <button
-                                :class="[
-                                    'flex size-[30px] items-center justify-center rounded-[5px] transition-colors',
-                                    !showWatched
-                                        ? 'bg-cherry text-white'
-                                        : 'bg-transparent text-muted-foreground hover:text-foreground',
-                                ]"
-                                @click="showWatched = false"
-                            >
-                                <IconEyeOff class="size-[13px]" />
-                            </button>
-                        </div>
-                    </div>
+                        <component :is="showWatched ? EyeIcon : EyeSlashIcon" class="size-[15px]" />
+                        <span>{{ showWatched ? 'Showing watched' : 'Hiding watched' }}</span>
+                    </button>
                 </div>
             </div>
 
@@ -228,7 +219,7 @@ const buckets = computed(() => {
                         <span class="text-[11px] font-bold uppercase tracking-[0.14em] text-foreground">
                             {{ bucket.label }}
                         </span>
-                        <span class="rounded-[10px] bg-muted px-2 py-[2px] text-[11px] text-muted-foreground">
+                        <span class="rounded-[5px] bg-cherry px-2 py-[2px] text-[11px] text-white">
                             {{ bucket.items.length }} video{{ bucket.items.length === 1 ? '' : 's' }}
                         </span>
                         <div class="h-px flex-1 bg-border" />
@@ -238,7 +229,7 @@ const buckets = computed(() => {
                         <div
                             v-for="video in bucket.items"
                             :key="video.youtube_video_id"
-                            class="group relative cursor-pointer overflow-hidden rounded-[9px] border-2 bg-card transition-opacity"
+                            class="group relative cursor-pointer overflow-hidden rounded-[5px] border-2 bg-card transition-opacity"
                             :class="
                                 video.channel_is_favorite
                                     ? video.user_state === 'watched'
@@ -264,7 +255,7 @@ const buckets = computed(() => {
                                     class="pointer-events-none absolute right-2 top-2 z-10"
                                     aria-hidden="true"
                                 >
-                                    <IconStarFilled class="size-5 drop-shadow-md" style="color: #ecc94b" />
+                                    <StarIconSolid class="size-5 drop-shadow-md" style="color: #ecc94b" />
                                 </div>
                             </div>
 
@@ -272,14 +263,14 @@ const buckets = computed(() => {
                                 <p class="mb-2 line-clamp-2 min-h-9 text-[13px] font-semibold leading-[1.35] tracking-[-0.005em] text-foreground">
                                     {{ video.title }}
                                 </p>
-                                <div class="flex items-center gap-1.5">
+                                <div class="flex items-center gap-2">
                                     <span
-                                        class="flex size-4 shrink-0 items-center justify-center rounded-full text-[8.5px] font-bold text-white"
+                                        class="flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
                                         style="background: var(--cherry)"
                                     >
                                         {{ video.channel.name[0] }}
                                     </span>
-                                    <span class="truncate text-[11px] text-muted-foreground">
+                                    <span class="truncate text-[13px] text-muted-foreground">
                                         {{ video.channel.name }}
                                     </span>
                                 </div>

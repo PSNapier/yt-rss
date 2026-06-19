@@ -2,7 +2,7 @@
 import type { SelectTriggerProps } from "reka-ui"
 import type { HTMLAttributes } from "vue"
 import { reactiveOmit } from "@vueuse/core"
-import { IconChevronDown } from "@tabler/icons-vue"
+import { ChevronDownIcon } from "@heroicons/vue/24/outline"
 import { SelectIcon, SelectTrigger, useForwardProps } from "reka-ui"
 import { cn } from "@/lib/utils"
 
@@ -27,7 +27,7 @@ const forwardedProps = useForwardProps(delegatedProps)
   >
     <slot />
     <SelectIcon as-child>
-      <IconChevronDown class="size-4 opacity-50" />
+      <ChevronDownIcon class="size-4 opacity-50" />
     </SelectIcon>
   </SelectTrigger>
 </template>

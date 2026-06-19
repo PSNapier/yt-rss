@@ -54,7 +54,7 @@ class GroupFeedController extends Controller
             ->withQueryString();
 
         return Inertia::render('Groups/Show', [
-            'group' => $group->only(['id', 'name']),
+            'group' => $group->only(['id', 'name', 'icon']),
             'videos' => $videos,
         ]);
     }

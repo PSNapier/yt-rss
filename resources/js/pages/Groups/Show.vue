@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { IconEye, IconEyeOff, IconStar, IconStarFilled } from '@tabler/icons-vue';
-import { SidebarTrigger } from '@/components/ui/sidebar';
+import { EyeIcon, EyeSlashIcon, WrenchIcon } from '@heroicons/vue/24/outline';
+import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { resolveGroupIcon } from '@/lib/groupIcons';
 import groups from '@/routes/groups';
 import subscriptions from '@/routes/subscriptions';
 import videoRoutes from '@/routes/videos';
@@ -32,7 +33,7 @@ interface CursorPaginator<T> {
 }
 
 const props = defineProps<{
-    group: { id: number; name: string };
+    group: { id: number; name: string; icon: string | null };
     videos: CursorPaginator<Video>;
 }>();
 
@@ -123,8 +124,8 @@ function startOfDay(offsetDays: number): Date {
 
 const buckets = computed(() => {
     const today = startOfDay(0);
-    const yesterday = startOfDay(1);
-    const weekStart = startOfDay(5);
+    const yesterday = startOfDay(2);
+    const weekStart = startOfDay(7);
 
     const visible = showWatched.value
         ? items
@@ -184,93 +185,83 @@ const onLoadMoreClick = () => {
     loadMore();
 };
 
-const groupInitial = computed(() => props.group.name.trim()[0]?.toLocaleUpperCase() ?? '?');
 </script>
 
 <template>
     <Head :title="group.name" />
 
     <div class="flex h-full flex-1 flex-col">
-        <div class="flex h-12 shrink-0 items-center gap-3 px-4 transition-[height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-10">
-            <SidebarTrigger class="-ml-1" />
-        </div>
-
         <div class="flex flex-1 flex-col gap-4 p-4 md:p-6">
 
-        <!-- Hero card -->
-        <div class="rounded-[14px] border border-border bg-muted/30 p-5">
-            <div class="flex items-center gap-4">
-                <!-- Group icon tile -->
-                <div
-                    class="flex size-14 shrink-0 items-center justify-center rounded-[13px] text-white"
-                    style="background: linear-gradient(135deg, var(--cherry) 0%, hsl(354 90% 52%) 100%)"
-                >
-                    <span class="font-mono text-2xl font-extrabold leading-none">{{ groupInitial }}</span>
-                </div>
+        <!-- Hero + stats (single fused unit) -->
+        <div class="flex flex-col">
 
-                <div class="min-w-0 flex-1">
-                    <p class="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Group</p>
-                    <h1 class="text-[28px] font-bold leading-none tracking-[-0.025em] text-foreground">
-                        {{ group.name }}
-                    </h1>
-                </div>
-
-                <div class="flex items-center gap-2">
-                    <!-- Show/hide watched toggle -->
-                    <div class="flex rounded-lg bg-muted p-[3px]">
-                        <button
-                            :class="[
-                                'flex size-[30px] items-center justify-center rounded-[5px] transition-colors',
-                                showWatched
-                                    ? 'bg-cherry text-white'
-                                    : 'bg-transparent text-muted-foreground hover:text-foreground',
-                            ]"
-                            :title="showWatched ? 'Watched videos visible (greyed)' : ''"
-                            @click="showWatched = true"
-                        >
-                            <IconEye class="size-[13px]" />
-                        </button>
-                        <button
-                            :class="[
-                                'flex size-[30px] items-center justify-center rounded-[5px] transition-colors',
-                                !showWatched
-                                    ? 'bg-cherry text-white'
-                                    : 'bg-transparent text-muted-foreground hover:text-foreground',
-                            ]"
-                            title="Hide watched videos"
-                            @click="showWatched = false"
-                        >
-                            <IconEyeOff class="size-[13px]" />
-                        </button>
-                    </div>
-
-                    <a
-                        :href="`${subscriptions.index().url}#subscription-group-${group.id}`"
-                        data-inertia-link="false"
-                        class="flex items-center gap-[7px] rounded-lg px-[14px] py-[9px] text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
-                        style="background: var(--cherry)"
-                    >
-                        Manage channels
-                    </a>
-                </div>
+        <!-- Hero banner -->
+        <div
+            class="flex items-end gap-[22px] rounded-t-xl rounded-b-none p-[26px_28px] text-white"
+            style="background: linear-gradient(180deg, var(--cherry) 0%, var(--cherry-deep) 100%)"
+        >
+            <!-- Group icon tile -->
+            <div
+                class="flex size-[92px] shrink-0 items-center justify-center rounded-xl bg-white"
+                style="color: var(--cherry)"
+            >
+                <component :is="resolveGroupIcon(group.icon, group.name)" class="size-11" />
             </div>
 
-            <!-- Stat pills -->
-            <div class="-mx-5 -mb-5 mt-[18px] flex items-stretch divide-x divide-border border-t border-border">
-                <div class="flex flex-1 flex-col gap-[3px] px-[18px] py-[14px]">
-                    <span class="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground/60">Channels</span>
-                    <span class="text-lg font-bold tracking-[-0.02em] text-muted-foreground">—</span>
-                </div>
-                <div class="flex flex-1 flex-col gap-[3px] px-[18px] py-[14px]">
-                    <span class="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground/60">Starred</span>
-                    <span class="text-lg font-bold tracking-[-0.02em] text-muted-foreground">—</span>
-                </div>
-                <div class="flex flex-1 flex-col gap-[3px] px-[18px] py-[14px]">
-                    <span class="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground/60">Last sync</span>
-                    <span class="text-sm font-medium tracking-[-0.02em] text-muted-foreground">—</span>
-                </div>
+            <div class="min-w-0 flex-1">
+                <p class="mb-[7px] text-[12px] font-bold uppercase tracking-[0.16em] text-white/70">Group</p>
+                <h1 class="text-[40px] font-bold leading-none tracking-[-0.03em] text-white">
+                    {{ group.name }}
+                </h1>
+            </div>
+
+            <div class="flex items-center gap-[10px]">
+                <!-- Show/hide watched toggle -->
+                <button
+                    type="button"
+                    :class="[
+                        'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
+                        showWatched ? 'bg-white' : 'bg-white/10 text-white/90 hover:text-white',
+                    ]"
+                    :style="showWatched ? 'color: var(--cherry)' : ''"
+                    :aria-pressed="showWatched"
+                    :title="showWatched ? 'Watched videos visible (greyed)' : 'Hide watched videos'"
+                    @click="showWatched = !showWatched"
+                >
+                    <component :is="showWatched ? EyeIcon : EyeSlashIcon" class="size-[15px]" />
+                    <span>{{ showWatched ? 'Showing watched' : 'Hiding watched' }}</span>
+                </button>
+
+                <a
+                    :href="`${subscriptions.index().url}#subscription-group-${group.id}`"
+                    data-inertia-link="false"
+                    class="flex items-center gap-2 rounded-[4px] border border-white/40 bg-white/10 p-[6px_10px] text-[13px] font-medium text-white/90 transition-colors hover:text-white"
+                >
+                    <WrenchIcon class="size-[15px]" />
+                    Manage channels
+                </a>
             </div>
         </div>
+
+        <!-- Stats card -->
+        <div class="flex overflow-hidden rounded-b-xl rounded-t-none border border-t-0 border-border bg-card">
+            <div class="flex flex-1 flex-col gap-[10px] border-r border-border px-[22px] py-[18px]">
+                <span class="text-[12px] font-bold uppercase tracking-[0.12em] text-muted-foreground/70">Channels</span>
+                <span class="text-[22px] font-semibold tracking-[-0.01em] text-foreground">—</span>
+            </div>
+            <div class="flex flex-1 flex-col gap-[10px] border-r border-border px-[22px] py-[18px]">
+                <span class="text-[12px] font-bold uppercase tracking-[0.12em] text-muted-foreground/70">Starred</span>
+                <span class="text-[22px] font-semibold tracking-[-0.01em] text-foreground">—</span>
+            </div>
+            <div class="flex flex-1 flex-col gap-[10px] px-[22px] py-[18px]">
+                <span class="text-[12px] font-bold uppercase tracking-[0.12em] text-muted-foreground/70">Last sync</span>
+                <span class="text-[22px] font-semibold tracking-[-0.01em] text-foreground">—</span>
+            </div>
+        </div>
+
+        </div>
+        <!-- /Hero + stats -->
 
         <!-- Empty state -->
         <div
@@ -294,7 +285,7 @@ const groupInitial = computed(() => props.group.name.trim()[0]?.toLocaleUpperCas
                     <span class="text-[11px] font-bold uppercase tracking-[0.14em] text-foreground">
                         {{ bucket.label }}
                     </span>
-                    <span class="rounded-[10px] bg-muted px-2 py-[2px] text-[11px] text-muted-foreground">
+                    <span class="rounded-[5px] bg-cherry px-2 py-[2px] text-[11px] text-white">
                         {{ bucket.items.length }} video{{ bucket.items.length === 1 ? '' : 's' }}
                     </span>
                     <div class="h-px flex-1 bg-border" />
@@ -305,7 +296,7 @@ const groupInitial = computed(() => props.group.name.trim()[0]?.toLocaleUpperCas
                     <div
                         v-for="video in bucket.items"
                         :key="video.youtube_video_id"
-                        class="group relative cursor-pointer overflow-hidden rounded-[9px] border-2 bg-card transition-opacity"
+                        class="group relative cursor-pointer overflow-hidden rounded-[5px] border-2 bg-card transition-opacity"
                         :class="
                             video.channel_is_favorite
                                 ? video.user_state === 'watched'
@@ -333,7 +324,7 @@ const groupInitial = computed(() => props.group.name.trim()[0]?.toLocaleUpperCas
                                 class="pointer-events-none absolute right-2 top-2 z-10"
                                 aria-hidden="true"
                             >
-                                <IconStarFilled class="size-5 drop-shadow-md" style="color: #ecc94b" />
+                                <StarIconSolid class="size-5 drop-shadow-md" style="color: #ecc94b" />
                             </div>
                         </div>
 

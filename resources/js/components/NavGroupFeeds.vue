@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
-import { IconPlus } from '@tabler/icons-vue';
-import { SidebarGroup, SidebarMenu, SidebarMenuItem } from '@/components/ui/sidebar';
+import { PlusIcon } from '@heroicons/vue/24/outline';
+import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { resolveGroupIcon } from '@/lib/groupIcons';
 import groups from '@/routes/groups';
@@ -13,8 +13,8 @@ const { isCurrentUrl } = useCurrentUrl();
 </script>
 
 <template>
-    <SidebarGroup class="px-0 py-0">
-        <div class="mb-1 mt-4 flex items-center justify-between px-4">
+    <SidebarGroup class="min-h-0 flex-1 px-0 py-0">
+        <div class="mb-1 mt-4 flex shrink-0 items-center justify-between px-4 group-data-[collapsible=icon]:invisible">
             <span class="text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
                 Groups
             </span>
@@ -23,41 +23,39 @@ const { isCurrentUrl } = useCurrentUrl();
                 class="flex size-5 items-center justify-center rounded text-sidebar-foreground/40 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 title="Manage groups"
             >
-                <IconPlus class="size-3.5" />
+                <PlusIcon class="size-3.5" />
             </Link>
         </div>
 
-        <SidebarMenu class="gap-0.5 px-2">
+        <SidebarMenu class="min-h-0 flex-1 gap-0.5 overflow-y-auto px-2 group-data-[collapsible=icon]:overflow-hidden">
             <SidebarMenuItem
                 v-for="group in channelGroups"
                 :key="group.id"
-                class="relative"
             >
-                <div
-                    v-if="isCurrentUrl(groups.show(group.id))"
-                    class="absolute bottom-1 left-0 top-1 w-0.5 rounded-full bg-cherry"
-                />
-                <Link
-                    :href="groups.show(group.id).url"
-                    :class="[
-                        'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+                <SidebarMenuButton
+                    as-child
+                    :is-active="isCurrentUrl(groups.show(group.id))"
+                    :tooltip="group.name"
+                    :class="
                         isCurrentUrl(groups.show(group.id))
-                            ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                            : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
-                    ]"
+                            ? 'bg-cherry font-semibold text-white hover:bg-cherry hover:text-white data-[active=true]:bg-cherry data-[active=true]:text-white'
+                            : 'text-foreground'
+                    "
                 >
-                    <component
-                        :is="resolveGroupIcon(group.icon, group.name)"
-                        class="size-4 shrink-0 opacity-60"
-                    />
-                    <span class="flex-1 truncate">{{ group.name }}</span>
-                    <span
-                        v-if="group.channels_count !== undefined && group.channels_count > 0"
-                        class="rounded-full px-1.5 py-0.5 text-[11px] leading-none text-sidebar-foreground/45"
-                    >
-                        {{ group.channels_count }}
-                    </span>
-                </Link>
+                    <Link :href="groups.show(group.id).url">
+                        <component :is="resolveGroupIcon(group.icon, group.name)" />
+                        <span class="flex-1 truncate">{{ group.name }}</span>
+                        <span
+                            v-if="group.channels_count !== undefined && group.channels_count > 0"
+                            :class="[
+                                'rounded-full px-1.5 py-0.5 text-[11px] leading-none group-data-[collapsible=icon]:hidden',
+                                isCurrentUrl(groups.show(group.id)) ? 'text-white/85' : 'text-sidebar-foreground/45',
+                            ]"
+                        >
+                            {{ group.channels_count }}
+                        </span>
+                    </Link>
+                </SidebarMenuButton>
             </SidebarMenuItem>
         </SidebarMenu>
     </SidebarGroup>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Form } from '@inertiajs/vue3';
-import { IconEye, IconEyeOff, IconLock, IconRefresh } from '@tabler/icons-vue';
+import { EyeIcon, EyeSlashIcon, LockClosedIcon, ArrowPathIcon } from '@heroicons/vue/24/outline';
 import { nextTick, onMounted, ref, useTemplateRef } from 'vue';
 import AlertError from '@/components/AlertError.vue';
 import { Button } from '@/components/ui/button';
@@ -42,7 +42,7 @@ onMounted(async () => {
     <Card class="w-full">
         <CardHeader>
             <CardTitle class="flex gap-3">
-                <IconLock class="size-4" />2FA recovery codes
+                <LockClosedIcon class="size-4" />2FA recovery codes
             </CardTitle>
             <CardDescription>
                 Recovery codes let you regain access if you lose your 2FA
@@ -55,7 +55,7 @@ onMounted(async () => {
             >
                 <Button @click="toggleRecoveryCodesVisibility" class="w-fit">
                     <component
-                        :is="isRecoveryCodesVisible ? IconEyeOff : IconEye"
+                        :is="isRecoveryCodesVisible ? EyeSlashIcon : EyeIcon"
                         class="size-4"
                     />
                     {{ isRecoveryCodesVisible ? 'Hide' : 'View' }} recovery
@@ -75,7 +75,7 @@ onMounted(async () => {
                         type="submit"
                         :disabled="processing"
                     >
-                        <IconRefresh /> Regenerate codes
+                        <ArrowPathIcon /> Regenerate codes
                     </Button>
                 </Form>
             </div>

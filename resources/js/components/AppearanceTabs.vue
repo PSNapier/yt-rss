@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { IconDeviceDesktop, IconMoon, IconSun } from '@tabler/icons-vue';
+import { ComputerDesktopIcon, MoonIcon, SunIcon } from '@heroicons/vue/24/outline';
 import { useAppearance } from '@/composables/useAppearance';
 
 const { appearance, updateAppearance } = useAppearance();
 
 const tabs = [
-    { value: 'light', Icon: IconSun, label: 'Light' },
-    { value: 'dark', Icon: IconMoon, label: 'Dark' },
-    { value: 'system', Icon: IconDeviceDesktop, label: 'System' },
+    { value: 'light', Icon: SunIcon, label: 'Light' },
+    { value: 'dark', Icon: MoonIcon, label: 'Dark' },
+    { value: 'system', Icon: ComputerDesktopIcon, label: 'System' },
 ] as const;
 </script>
 

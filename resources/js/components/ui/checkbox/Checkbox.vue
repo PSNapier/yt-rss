@@ -2,7 +2,7 @@
 import type { CheckboxRootEmits, CheckboxRootProps } from "reka-ui"
 import type { HTMLAttributes } from "vue"
 import { reactiveOmit } from "@vueuse/core"
-import { IconCheck } from "@tabler/icons-vue"
+import { CheckIcon } from "@heroicons/vue/24/outline"
 import { CheckboxIndicator, CheckboxRoot, useForwardPropsEmits } from "reka-ui"
 import { cn } from "@/lib/utils"
 
@@ -28,7 +28,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
       class="grid place-content-center text-current transition-none"
     >
       <slot v-bind="slotProps">
-        <IconCheck class="size-3.5" />
+        <CheckIcon class="size-3.5" />
       </slot>
     </CheckboxIndicator>
   </CheckboxRoot>

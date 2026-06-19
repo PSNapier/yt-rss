@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { usePage } from '@inertiajs/vue3';
-import { IconSelector } from '@tabler/icons-vue';
+import { ChevronUpDownIcon } from '@heroicons/vue/24/outline';
 import { computed } from 'vue';
 import {
     DropdownMenu,
@@ -28,11 +28,11 @@ const { isMobile, state } = useSidebar();
                 <DropdownMenuTrigger as-child>
                     <SidebarMenuButton
                         size="lg"
-                        class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                        class="pl-0 group-data-[collapsible=icon]:!h-12 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                         data-test="sidebar-menu-button"
                     >
                         <UserInfo :user="user" />
-                        <IconSelector class="ml-auto size-4" />
+                        <ChevronUpDownIcon class="ml-auto size-4 shrink-0" />
                     </SidebarMenuButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent

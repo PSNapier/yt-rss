@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Form } from '@inertiajs/vue3';
 import { useClipboard } from '@vueuse/core';
-import { IconCheck, IconCopy, IconScan } from '@tabler/icons-vue';
+import { CheckIcon, ClipboardDocumentIcon, ViewfinderCircleIcon } from '@heroicons/vue/24/outline';
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import AlertError from '@/components/AlertError.vue';
 import InputError from '@/components/InputError.vue';
@@ -137,7 +137,7 @@ watch(
                                 class="border-b border-border last:border-b-0"
                             />
                         </div>
-                        <IconScan
+                        <ViewfinderCircleIcon
                             class="relative z-20 size-6 text-foreground"
                         />
                     </div>
@@ -224,11 +224,11 @@ watch(
                                         @click="copy(manualSetupKey || '')"
                                         class="relative block h-auto border-l border-border px-3 hover:bg-muted"
                                     >
-                                        <IconCheck
+                                        <CheckIcon
                                             v-if="copied"
                                             class="w-4 text-green-500"
                                         />
-                                        <IconCopy v-else class="w-4" />
+                                        <ClipboardDocumentIcon v-else class="w-4" />
                                     </button>
                                 </template>
                             </div>

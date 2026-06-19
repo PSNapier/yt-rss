@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { IconEye, IconEyeOff } from '@tabler/icons-vue';
+import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
 import { ref, useTemplateRef } from 'vue';
 import type { HTMLAttributes } from 'vue';
 import { Input } from '@/components/ui/input';
@@ -39,8 +39,8 @@ defineExpose({
             :aria-label="showPassword ? 'Hide password' : 'Show password'"
             :tabindex="-1"
         >
-            <IconEyeOff v-if="showPassword" class="size-4" />
-            <IconEye v-else class="size-4" />
+            <EyeSlashIcon v-if="showPassword" class="size-4" />
+            <EyeIcon v-else class="size-4" />
         </button>
     </div>
 </template>

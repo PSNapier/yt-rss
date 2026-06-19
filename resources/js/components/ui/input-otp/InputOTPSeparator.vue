@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from "vue"
-import { IconMinus } from "@tabler/icons-vue"
+import { MinusIcon } from "@heroicons/vue/24/outline"
 import { useForwardProps } from "reka-ui"
 
 const props = defineProps<{ class?: HTMLAttributes["class"] }>()
@@ -15,7 +15,7 @@ const forwarded = useForwardProps(props)
     v-bind="forwarded"
   >
     <slot>
-      <IconMinus />
+      <MinusIcon />
     </slot>
   </div>
 </template>

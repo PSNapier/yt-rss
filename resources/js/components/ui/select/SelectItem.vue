@@ -2,7 +2,7 @@
 import type { SelectItemProps } from "reka-ui"
 import type { HTMLAttributes } from "vue"
 import { reactiveOmit } from "@vueuse/core"
-import { IconCheck } from "@tabler/icons-vue"
+import { CheckIcon } from "@heroicons/vue/24/outline"
 import {
   SelectItem,
   SelectItemIndicator,
@@ -32,7 +32,7 @@ const forwardedProps = useForwardProps(delegatedProps)
     <span class="absolute right-2 flex size-3.5 items-center justify-center">
       <SelectItemIndicator>
         <slot name="indicator-icon">
-          <IconCheck class="size-4" />
+          <CheckIcon class="size-4" />
         </slot>
       </SelectItemIndicator>
     </span>

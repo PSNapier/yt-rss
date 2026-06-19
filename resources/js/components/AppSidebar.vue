@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { IconBrandGithub, IconBook, IconHome, IconPlaylist, IconStar, IconVideo } from '@tabler/icons-vue';
+import { HomeIcon, QueueListIcon, VideoCameraIcon } from '@heroicons/vue/24/outline';
 import AppLogo from '@/components/AppLogo.vue';
-import NavFooter from '@/components/NavFooter.vue';
 import NavGroupFeeds from '@/components/NavGroupFeeds.vue';
 import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
@@ -11,9 +10,7 @@ import {
     SidebarContent,
     SidebarFooter,
     SidebarHeader,
-    SidebarMenu,
-    SidebarMenuButton,
-    SidebarMenuItem,
+    SidebarTrigger,
 } from '@/components/ui/sidebar';
 import feed from '@/routes/feed';
 import groups from '@/routes/groups';
@@ -24,30 +21,17 @@ const mainNavItems: NavItem[] = [
     {
         title: 'Groups',
         href: groups.index(),
-        icon: IconHome,
+        icon: HomeIcon,
     },
     {
         title: 'All Videos',
         href: feed.index(),
-        icon: IconVideo,
+        icon: VideoCameraIcon,
     },
     {
         title: 'Subscriptions',
         href: subscriptions.index(),
-        icon: IconPlaylist,
-    },
-];
-
-const footerNavItems: NavItem[] = [
-    {
-        title: 'Repository',
-        href: 'https://github.com/laravel/vue-starter-kit',
-        icon: IconBrandGithub,
-    },
-    {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#vue',
-        icon: IconBook,
+        icon: QueueListIcon,
     },
 ];
 </script>
@@ -55,24 +39,25 @@ const footerNavItems: NavItem[] = [
 <template>
     <Sidebar collapsible="icon">
         <SidebarHeader>
-            <SidebarMenu>
-                <SidebarMenuItem>
-                    <SidebarMenuButton size="lg" as-child>
-                        <Link :href="groups.index().url">
-                            <AppLogo />
-                        </Link>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-            </SidebarMenu>
+            <div
+                class="flex items-center justify-between gap-2 group-data-[collapsible=icon]:justify-center"
+            >
+                <Link
+                    :href="groups.index().url"
+                    class="min-w-0 group-data-[collapsible=icon]:hidden"
+                >
+                    <AppLogo />
+                </Link>
+                <SidebarTrigger class="shrink-0" />
+            </div>
         </SidebarHeader>
 
-        <SidebarContent>
+        <SidebarContent class="overflow-hidden">
             <NavMain :items="mainNavItems" />
             <NavGroupFeeds />
         </SidebarContent>
 
-        <SidebarFooter>
-            <NavFooter :items="footerNavItems" />
+        <SidebarFooter class="border-t border-sidebar-border">
             <NavUser />
         </SidebarFooter>
     </Sidebar>

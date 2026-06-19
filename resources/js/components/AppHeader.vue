@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
-import { IconBook, IconFolder, IconMenu2, IconRss, IconSearch } from '@tabler/icons-vue';
+import { BookOpenIcon, FolderIcon, Bars3Icon, RssIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
@@ -57,7 +57,7 @@ const mainNavItems: NavItem[] = [
     {
         title: 'Channel groups',
         href: groups.index(),
-        icon: IconRss,
+        icon: RssIcon,
     },
 ];
 
@@ -65,12 +65,12 @@ const rightNavItems: NavItem[] = [
     {
         title: 'Repository',
         href: 'https://github.com/laravel/vue-starter-kit',
-        icon: IconFolder,
+        icon: FolderIcon,
     },
     {
         title: 'Documentation',
         href: 'https://laravel.com/docs/starter-kits#vue',
-        icon: IconBook,
+        icon: BookOpenIcon,
     },
 ];
 </script>
@@ -88,7 +88,7 @@ const rightNavItems: NavItem[] = [
                                 size="icon"
                                 class="mr-2 h-9 w-9"
                             >
-                                <IconMenu2 class="h-5 w-5" />
+                                <Bars3Icon class="h-5 w-5" />
                             </Button>
                         </SheetTrigger>
                         <SheetContent side="left" class="w-[300px] p-6">
@@ -195,7 +195,7 @@ const rightNavItems: NavItem[] = [
                             size="icon"
                             class="group h-9 w-9 cursor-pointer"
                         >
-                            <IconSearch
+                            <MagnifyingGlassIcon
                                 class="size-5 opacity-80 group-hover:opacity-100"
                             />
                         </Button>

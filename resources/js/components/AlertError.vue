@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { IconAlertCircle } from '@tabler/icons-vue';
+import { ExclamationCircleIcon } from '@heroicons/vue/24/outline';
 import { computed } from 'vue';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
@@ -17,7 +17,7 @@ const uniqueErrors = computed(() => Array.from(new Set(props.errors)));
 
 <template>
     <Alert variant="destructive">
-        <IconAlertCircle class="size-4" />
+        <ExclamationCircleIcon class="size-4" />
         <AlertTitle>{{ title }}</AlertTitle>
         <AlertDescription>
             <ul class="list-inside list-disc text-sm">

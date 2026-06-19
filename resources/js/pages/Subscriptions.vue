@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { IconChevronDown, IconChevronUp, IconStar, IconStarFilled } from '@tabler/icons-vue';
+import { ChevronDownIcon, ChevronUpIcon, StarIcon } from '@heroicons/vue/24/outline';
+import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
 import { computed, ref, useTemplateRef } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
@@ -354,8 +355,8 @@ const onImportFile = (e: Event) => {
                     <CollapsibleTrigger as-child>
                         <Button type="button" variant="ghost" size="sm" class="-mx-1 gap-1 text-muted-foreground">
                             Add by channel ID
-                            <IconChevronDown v-if="!idFallbackOpen" class="size-4" />
-                            <IconChevronUp v-else class="size-4" />
+                            <ChevronDownIcon v-if="!idFallbackOpen" class="size-4" />
+                            <ChevronUpIcon v-else class="size-4" />
                         </Button>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
@@ -438,8 +439,8 @@ const onImportFile = (e: Event) => {
                                 :aria-label="channel.is_favorite ? 'Remove from favorites' : 'Mark as favorite'"
                                 @click="toggleFavorite(channel)"
                             >
-                                <IconStarFilled v-if="channel.is_favorite" class="size-5 text-amber-400" />
-                                <IconStar v-else class="size-5" />
+                                <StarIconSolid v-if="channel.is_favorite" class="size-5 text-amber-400" />
+                                <StarIcon v-else class="size-5" />
                             </Button>
                             <div class="min-w-0 flex-1">
                                 <p class="truncate font-medium">{{ channel.name }}</p>
@@ -488,8 +489,8 @@ const onImportFile = (e: Event) => {
                                         :aria-label="channel.is_favorite ? 'Remove from favorites' : 'Mark as favorite'"
                                         @click="toggleFavorite(channel)"
                                     >
-                                        <IconStarFilled v-if="channel.is_favorite" class="size-5 text-amber-400" />
-                                <IconStar v-else class="size-5" />
+                                        <StarIconSolid v-if="channel.is_favorite" class="size-5 text-amber-400" />
+                                <StarIcon v-else class="size-5" />
                                     </Button>
                                     <div class="min-w-0 flex-1">
                                         <p class="truncate font-medium">{{ channel.name }}</p>

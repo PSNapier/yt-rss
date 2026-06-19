@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from "vue"
-import { IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from "@tabler/icons-vue"
+import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon } from "@heroicons/vue/24/outline"
 import { cn } from "@/lib/utils"
 import { Button } from '@/components/ui/button'
 import { useSidebar } from "./utils"
@@ -21,8 +21,8 @@ const { isMobile, state, toggleSidebar } = useSidebar()
     :class="cn('h-7 w-7', props.class)"
     @click="toggleSidebar"
   >
-    <IconLayoutSidebarLeftExpand v-if="isMobile || state === 'collapsed'" />
-    <IconLayoutSidebarLeftCollapse v-else />
+    <ChevronDoubleRightIcon v-if="isMobile || state === 'collapsed'" />
+    <ChevronDoubleLeftIcon v-else />
     <span class="sr-only">Toggle sidebar</span>
   </Button>
 </template>
