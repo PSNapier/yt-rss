@@ -48,3 +48,26 @@ function something()
 {
     // ..
 }
+
+/**
+ * Headers for an Inertia partial reload that resolves the given deferred prop(s).
+ *
+ * The feed controllers wrap `videos` in Inertia::defer(), so it (and the RSS
+ * fetch inside the closure) only resolves on the follow-up partial request the
+ * client fires after the initial page shell loads.
+ *
+ * @param  array<int, string>  $only
+ * @return array<string, string>
+ */
+function inertiaPartial(string $component, array $only = ['videos']): array
+{
+    $version = app(App\Http\Middleware\HandleInertiaRequests::class)
+        ->version(Illuminate\Http\Request::create('/'));
+
+    return array_filter([
+        'X-Inertia' => 'true',
+        'X-Inertia-Version' => $version,
+        'X-Inertia-Partial-Component' => $component,
+        'X-Inertia-Partial-Data' => implode(',', $only),
+    ], fn ($value) => $value !== null);
+}

@@ -16,46 +16,49 @@ class GroupFeedController extends Controller
     {
         $this->authorize('view', $group);
 
-        $fetcher->fetchForGroup($group);
-
         $userId = $request->user()->id;
-
-        $videos = Video::query()
-            ->select([
-                'videos.id',
-                'videos.youtube_video_id',
-                'videos.title',
-                'videos.thumbnail_url',
-                'videos.published_at',
-                'videos.channel_id',
-                'user_video_states.state as user_state',
-                \DB::raw('ucf.channel_id IS NOT NULL as channel_is_favorite'),
-            ])
-            ->join('channel_group_channel as cgc', function ($join) use ($group) {
-                $join->on('cgc.channel_id', '=', 'videos.channel_id')
-                    ->where('cgc.channel_group_id', $group->id);
-            })
-            ->leftJoin('user_channel_favorites as ucf', function ($join) use ($userId) {
-                $join->on('ucf.channel_id', '=', 'videos.channel_id')
-                    ->where('ucf.user_id', $userId);
-            })
-            ->leftJoin('user_video_states', function ($join) use ($userId) {
-                $join->on('user_video_states.youtube_video_id', '=', 'videos.youtube_video_id')
-                    ->where('user_video_states.user_id', $userId);
-            })
-            ->where(function ($q) {
-                $q->whereNull('user_video_states.state')
-                    ->orWhere('user_video_states.state', '!=', 'hidden');
-            })
-            ->with(['channel:id,channel_id,name'])
-            ->orderByDesc('videos.published_at')
-            ->orderByDesc('videos.id')
-            ->cursorPaginate(15)
-            ->withQueryString();
 
         return Inertia::render('Groups/Show', [
             'group' => $group->only(['id', 'name', 'icon']),
-            'videos' => $videos,
+            'videos' => Inertia::defer(function () use ($request, $fetcher, $group, $userId) {
+                // Only refresh RSS on the first (cursorless) load, not on every paginate.
+                if (! $request->filled('cursor')) {
+                    $fetcher->fetchForGroup($group);
+                }
+
+                return Video::query()
+                    ->select([
+                        'videos.id',
+                        'videos.youtube_video_id',
+                        'videos.title',
+                        'videos.thumbnail_url',
+                        'videos.published_at',
+                        'videos.channel_id',
+                        'user_video_states.state as user_state',
+                        \DB::raw('ucf.channel_id IS NOT NULL as channel_is_favorite'),
+                    ])
+                    ->join('channel_group_channel as cgc', function ($join) use ($group) {
+                        $join->on('cgc.channel_id', '=', 'videos.channel_id')
+                            ->where('cgc.channel_group_id', $group->id);
+                    })
+                    ->leftJoin('user_channel_favorites as ucf', function ($join) use ($userId) {
+                        $join->on('ucf.channel_id', '=', 'videos.channel_id')
+                            ->where('ucf.user_id', $userId);
+                    })
+                    ->leftJoin('user_video_states', function ($join) use ($userId) {
+                        $join->on('user_video_states.youtube_video_id', '=', 'videos.youtube_video_id')
+                            ->where('user_video_states.user_id', $userId);
+                    })
+                    ->where(function ($q) {
+                        $q->whereNull('user_video_states.state')
+                            ->orWhere('user_video_states.state', '!=', 'hidden');
+                    })
+                    ->with(['channel:id,channel_id,name'])
+                    ->orderByDesc('videos.published_at')
+                    ->orderByDesc('videos.id')
+                    ->cursorPaginate(15)
+                    ->withQueryString();
+            }),
         ]);
     }
 

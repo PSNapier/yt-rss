@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { Head, router, usePage } from '@inertiajs/vue3';
+import { Deferred, Head, router, usePage } from '@inertiajs/vue3';
 import { EyeIcon, EyeSlashIcon, WrenchIcon } from '@heroicons/vue/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import FeedGridSkeleton from '@/components/FeedGridSkeleton.vue';
 import { resolveGroupIcon } from '@/lib/groupIcons';
 import groups from '@/routes/groups';
 import subscriptions from '@/routes/subscriptions';
@@ -34,16 +35,31 @@ interface CursorPaginator<T> {
 
 const props = defineProps<{
     group: { id: number; name: string; icon: string | null };
-    videos: CursorPaginator<Video>;
+    videos?: CursorPaginator<Video>;
 }>();
 
 defineOptions({});
 
-const items = reactive<Video[]>([...props.videos.data]);
-const nextUrl = ref<string | null>(props.videos.next_page_url);
+const items = reactive<Video[]>([]);
+const nextUrl = ref<string | null>(null);
 const loadingMore = ref(false);
 const showWatched = ref(true);
 const olderExpanded = ref(false);
+
+watch(
+    () => props.videos,
+    (v) => {
+        if (!v) {
+            items.splice(0, items.length);
+            nextUrl.value = null;
+            olderExpanded.value = false;
+            return;
+        }
+        items.splice(0, items.length, ...v.data);
+        nextUrl.value = v.next_page_url;
+    },
+    { immediate: true },
+);
 
 // Right-click context menu
 const ctx = reactive({
@@ -263,16 +279,21 @@ const onLoadMoreClick = () => {
         </div>
         <!-- /Hero + stats -->
 
-        <!-- Empty state -->
-        <div
-            v-if="items.length === 0"
-            class="rounded-xl border border-dashed p-8 text-center text-muted-foreground"
-        >
-            No videos yet. Add channels to this group, then refresh.
-        </div>
+        <Deferred data="videos">
+            <template #fallback>
+                <FeedGridSkeleton :count="8" />
+            </template>
 
-        <!-- Time-bucketed feed -->
-        <template v-else>
+            <!-- Empty state -->
+            <div
+                v-if="items.length === 0"
+                class="rounded-xl border border-dashed p-8 text-center text-muted-foreground"
+            >
+                No videos yet. Add channels to this group, then refresh.
+            </div>
+
+            <!-- Time-bucketed feed -->
+            <template v-else>
             <template v-if="buckets.length === 0">
                 <div class="rounded-xl border border-dashed p-8 text-center text-muted-foreground">
                     No unwatched videos.
@@ -351,7 +372,10 @@ const onLoadMoreClick = () => {
                 </div>
             </section>
 
-        </template>
+            </template>
+        </Deferred>
+
+        <FeedGridSkeleton v-if="loadingMore" :count="4" class="mt-4" />
 
         <div v-if="showLoadMoreButton" class="flex justify-center pb-4">
             <button

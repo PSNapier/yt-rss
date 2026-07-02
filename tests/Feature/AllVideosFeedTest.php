@@ -19,13 +19,36 @@ test('all videos feed returns videos from all subscribed channels', function () 
 
     Video::factory()->count(3)->create(['channel_id' => $channel->id]);
 
+    $response = $this->actingAs($user)
+        ->get(route('feed.index'), inertiaPartial('Videos/Feed'));
+
+    $response->assertOk();
+    expect($response->json('component'))->toBe('Videos/Feed');
+    expect($response->json('props.videos.data'))->toHaveCount(3);
+});
+
+test('all videos feed defers videos and skips the RSS fetch on the initial shell render', function () {
+    Http::fake(['*' => Http::response('<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>', 200)]);
+
+    $user = User::factory()->create();
+    $group = ChannelGroup::factory()->for($user)->create();
+    $channel = Channel::factory()->create(['last_fetched_at' => null]);
+    $group->channels()->attach($channel);
+
+    // Full page render (no partial headers): the shell returns immediately with
+    // `videos` deferred and no blocking YouTube fetch.
     $this->actingAs($user)
         ->get(route('feed.index'))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('Videos/Feed')
-            ->has('videos.data', 3)
+            ->missing('videos')
         );
+
+    $rssRequests = collect(Http::recorded())
+        ->filter(fn ($pair) => str_contains($pair[0]->url(), 'youtube.com'));
+
+    expect($rssRequests)->toHaveCount(0);
 });
 
 test('all videos feed auto-fetches stale channels on load', function () {
@@ -36,7 +59,7 @@ test('all videos feed auto-fetches stale channels on load', function () {
     $channel = Channel::factory()->create(['last_fetched_at' => null]);
     $group->channels()->attach($channel);
 
-    $this->actingAs($user)->get(route('feed.index'))->assertOk();
+    $this->actingAs($user)->get(route('feed.index'), inertiaPartial('Videos/Feed'))->assertOk();
 
     $rssRequests = collect(Http::recorded())
         ->filter(fn ($pair) => str_contains($pair[0]->url(), 'youtube.com'));
@@ -56,7 +79,7 @@ test('all videos feed skips fetch for recently fetched channels', function () {
     $channel = Channel::factory()->create(['last_fetched_at' => now()]);
     $group->channels()->attach($channel);
 
-    $this->actingAs($user)->get(route('feed.index'))->assertOk();
+    $this->actingAs($user)->get(route('feed.index'), inertiaPartial('Videos/Feed'))->assertOk();
 
     $rssRequests = collect(Http::recorded())
         ->filter(fn ($pair) => str_contains($pair[0]->url(), 'youtube.com'));
@@ -74,7 +97,7 @@ test('all videos feed deduplicates channels shared across groups', function () {
     $group1->channels()->attach($channel);
     $group2->channels()->attach($channel);
 
-    $this->actingAs($user)->get(route('feed.index'))->assertOk();
+    $this->actingAs($user)->get(route('feed.index'), inertiaPartial('Videos/Feed'))->assertOk();
 
     $rssRequests = collect(Http::recorded())
         ->filter(fn ($pair) => str_contains($pair[0]->url(), 'youtube.com'));

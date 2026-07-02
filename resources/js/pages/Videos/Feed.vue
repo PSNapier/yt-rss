@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { Head, router, usePage } from '@inertiajs/vue3';
+import { Deferred, Head, router, usePage } from '@inertiajs/vue3';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
-import { SidebarTrigger } from '@/components/ui/sidebar';
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import FeedGridSkeleton from '@/components/FeedGridSkeleton.vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import videoRoutes from '@/routes/videos';
 
 interface Channel {
@@ -31,13 +31,27 @@ interface CursorPaginator<T> {
 }
 
 const props = defineProps<{
-    videos: CursorPaginator<Video>;
+    videos?: CursorPaginator<Video>;
 }>();
 
-const items = reactive<Video[]>([...props.videos.data]);
-const nextUrl = ref<string | null>(props.videos.next_page_url);
+const items = reactive<Video[]>([]);
+const nextUrl = ref<string | null>(null);
 const loadingMore = ref(false);
 const showWatched = ref(true);
+
+watch(
+    () => props.videos,
+    (v) => {
+        if (!v) {
+            items.splice(0, items.length);
+            nextUrl.value = null;
+            return;
+        }
+        items.splice(0, items.length, ...v.data);
+        nextUrl.value = v.next_page_url;
+    },
+    { immediate: true },
+);
 
 const ctx = reactive({
     open: false,
@@ -153,11 +167,6 @@ const buckets = computed(() => {
     <Head title="All Videos" />
 
     <div class="flex h-full flex-1 flex-col">
-        <div class="flex h-12 shrink-0 items-center gap-3 px-4 transition-[height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-10">
-            <SidebarTrigger class="-ml-1" />
-            <span class="text-sm font-semibold">All Videos</span>
-        </div>
-
         <div class="flex flex-1 flex-col gap-4 p-4 md:p-6">
 
             <!-- Hero banner -->
@@ -198,16 +207,21 @@ const buckets = computed(() => {
                 </div>
             </div>
 
-            <!-- Empty state -->
-            <div
-                v-if="items.length === 0"
-                class="rounded-xl border border-dashed p-8 text-center text-muted-foreground"
-            >
-                No videos yet. Add channels to a group, then refresh.
-            </div>
+            <Deferred data="videos">
+                <template #fallback>
+                    <FeedGridSkeleton :count="8" />
+                </template>
 
-            <!-- Time-bucketed feed -->
-            <template v-else>
+                <!-- Empty state -->
+                <div
+                    v-if="items.length === 0"
+                    class="rounded-xl border border-dashed p-8 text-center text-muted-foreground"
+                >
+                    No videos yet. Add channels to a group, then refresh.
+                </div>
+
+                <!-- Time-bucketed feed -->
+                <template v-else>
                 <template v-if="buckets.length === 0">
                     <div class="rounded-xl border border-dashed p-8 text-center text-muted-foreground">
                         No unwatched videos.
@@ -278,10 +292,11 @@ const buckets = computed(() => {
                         </div>
                     </div>
                 </section>
-            </template>
+                </template>
+            </Deferred>
 
             <div ref="sentinel" class="h-10" />
-            <div v-if="loadingMore" class="text-center text-sm text-muted-foreground">Loading more…</div>
+            <FeedGridSkeleton v-if="loadingMore" :count="4" class="mt-4" />
 
             <!-- Right-click context menu -->
             <div
