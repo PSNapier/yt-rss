@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { EyeIcon, EyeSlashIcon, FunnelIcon } from '@heroicons/vue/24/outline';
 import { Deferred, Head, router, usePage } from '@inertiajs/vue3';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
-import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
-import FeedGridSkeleton from '@/components/FeedGridSkeleton.vue';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import FeedGridSkeleton from '@/components/FeedGridSkeleton.vue';
+import VideoCard from '@/components/VideoCard.vue';
+import { getFeedCache, saveFeedCache } from '@/composables/useFeedCache';
+import feed from '@/routes/feed';
 import videoRoutes from '@/routes/videos';
 
 interface Channel {
@@ -32,25 +34,64 @@ interface CursorPaginator<T> {
 
 const props = defineProps<{
     videos?: CursorPaginator<Video>;
+    capEnabled?: boolean;
 }>();
 
 const items = reactive<Video[]>([]);
 const nextUrl = ref<string | null>(null);
 const loadingMore = ref(false);
 const showWatched = ref(true);
+const capOn = ref(props.capEnabled ?? false);
+
+const cacheKey = 'all';
+// True once the feed was restored from cache, so the deferred page-one
+// payload that arrives on navigation is ignored instead of clobbering it.
+const hydratedFromCache = ref(false);
+
+const applyItems = (data: Video[], next: string | null) => {
+    items.splice(0, items.length, ...data);
+    nextUrl.value = next;
+};
+
+// Restore cached state on mount so returning keeps loaded videos + cursor.
+const cached = getFeedCache<Video>(cacheKey);
+
+if (cached) {
+    applyItems(cached.items, cached.nextUrl);
+    hydratedFromCache.value = true;
+}
 
 watch(
     () => props.videos,
     (v) => {
         if (!v) {
-            items.splice(0, items.length);
-            nextUrl.value = null;
             return;
         }
-        items.splice(0, items.length, ...v.data);
-        nextUrl.value = v.next_page_url;
+
+        // Cache already restored richer state; ignore the deferred first page
+        // so infinite-scroll progress survives the round trip.
+        if (hydratedFromCache.value) {
+            hydratedFromCache.value = false;
+
+            return;
+        }
+
+        applyItems(v.data, v.next_page_url);
     },
     { immediate: true },
+);
+
+// Persist loaded videos + cursor so returning restores them.
+watch(
+    [items, nextUrl],
+    () => {
+        saveFeedCache(cacheKey, {
+            items,
+            nextUrl: nextUrl.value,
+            olderExpanded: false,
+        });
+    },
+    { deep: true },
 );
 
 const ctx = reactive({
@@ -60,7 +101,10 @@ const ctx = reactive({
     videoId: null as string | null,
 });
 
-const closeCtx = () => { ctx.open = false; ctx.videoId = null; };
+const closeCtx = () => {
+    ctx.open = false;
+    ctx.videoId = null;
+};
 
 const openCtx = (event: MouseEvent, video: Video) => {
     event.preventDefault();
@@ -70,19 +114,67 @@ const openCtx = (event: MouseEvent, video: Video) => {
     ctx.open = true;
 };
 
-const setState = (youtubeVideoId: string, state: 'watched' | 'hidden' | null) => {
+const setState = (
+    youtubeVideoId: string,
+    state: 'watched' | 'hidden' | null,
+) => {
     const item = items.find((v) => v.youtube_video_id === youtubeVideoId);
-    if (item) item.user_state = state;
-    if (state === 'hidden') {
-        const idx = items.findIndex((v) => v.youtube_video_id === youtubeVideoId);
-        if (idx !== -1) items.splice(idx, 1);
+
+    if (item) {
+        item.user_state = state;
     }
-    router.post(videoRoutes.state.store(youtubeVideoId).url, { state }, { preserveScroll: true, preserveState: true });
+
+    if (state === 'hidden') {
+        const idx = items.findIndex(
+            (v) => v.youtube_video_id === youtubeVideoId,
+        );
+
+        if (idx !== -1) {
+            items.splice(idx, 1);
+        }
+    }
+
+    router.post(
+        videoRoutes.state.store(youtubeVideoId).url,
+        { state },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            // With the cap on, a state change alters which unwatched video
+            // each channel surfaces, so refetch the capped feed.
+            onSuccess: () => {
+                if (capOn.value) {
+                    router.reload({ only: ['videos'] });
+                }
+            },
+        },
+    );
+};
+
+// Toggle the per-user cap, persist it, then refetch the feed with the new mode.
+const toggleCap = () => {
+    capOn.value = !capOn.value;
+    router.post(
+        feed.cap().url,
+        { enabled: capOn.value },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => router.reload({ only: ['videos'] }),
+        },
+    );
 };
 
 const onCardClick = (video: Video) => {
-    if (video.user_state !== 'watched') setState(video.youtube_video_id, 'watched');
-    window.open(`https://www.youtube.com/watch?v=${video.youtube_video_id}`, '_blank', 'noopener');
+    if (video.user_state !== 'watched') {
+        setState(video.youtube_video_id, 'watched');
+    }
+
+    window.open(
+        `https://www.youtube.com/watch?v=${video.youtube_video_id}`,
+        '_blank',
+        'noopener',
+    );
 };
 
 const sentinel = ref<HTMLElement | null>(null);
@@ -90,8 +182,12 @@ let observer: IntersectionObserver | null = null;
 const page = usePage();
 
 const loadMore = async () => {
-    if (loadingMore.value || !nextUrl.value) return;
+    if (loadingMore.value || !nextUrl.value) {
+        return;
+    }
+
     loadingMore.value = true;
+
     try {
         const res = await fetch(nextUrl.value, {
             headers: {
@@ -102,10 +198,18 @@ const loadMore = async () => {
                 Accept: 'text/html, application/xhtml+xml',
             },
         });
-        if (!res.ok) return;
+
+        if (!res.ok) {
+            return;
+        }
+
         const json = await res.json();
         const data = json?.props?.videos as CursorPaginator<Video> | undefined;
-        if (!data) return;
+
+        if (!data) {
+            return;
+        }
+
         items.push(...data.data);
         nextUrl.value = data.next_page_url;
     } finally {
@@ -117,9 +221,14 @@ onMounted(() => {
     document.addEventListener('click', closeCtx);
     document.addEventListener('scroll', closeCtx, { passive: true });
     observer = new IntersectionObserver((entries) => {
-        if (entries.some((e) => e.isIntersecting)) loadMore();
+        if (entries.some((e) => e.isIntersecting)) {
+            loadMore();
+        }
     });
-    if (sentinel.value) observer.observe(sentinel.value);
+
+    if (sentinel.value) {
+        observer.observe(sentinel.value);
+    }
 });
 
 onUnmounted(() => {
@@ -132,6 +241,7 @@ function startOfDay(offsetDays: number): Date {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() - offsetDays);
+
     return d;
 }
 
@@ -145,18 +255,24 @@ const buckets = computed(() => {
         : items.filter((v) => v.user_state !== 'watched');
 
     const sections = [
-        { id: 'today',     label: 'Today',             items: [] as Video[] },
-        { id: 'yesterday', label: 'Yesterday',          items: [] as Video[] },
-        { id: 'week',      label: 'Earlier this week',  items: [] as Video[] },
-        { id: 'older',     label: 'Older',              items: [] as Video[] },
+        { id: 'today', label: 'Today', items: [] as Video[] },
+        { id: 'yesterday', label: 'Yesterday', items: [] as Video[] },
+        { id: 'week', label: 'Earlier this week', items: [] as Video[] },
+        { id: 'older', label: 'Older', items: [] as Video[] },
     ];
 
     for (const v of visible) {
         const pub = new Date(v.published_at);
-        if (pub >= today) sections[0].items.push(v);
-        else if (pub >= yesterday) sections[1].items.push(v);
-        else if (pub >= weekStart) sections[2].items.push(v);
-        else sections[3].items.push(v);
+
+        if (pub >= today) {
+            sections[0].items.push(v);
+        } else if (pub >= yesterday) {
+            sections[1].items.push(v);
+        } else if (pub >= weekStart) {
+            sections[2].items.push(v);
+        } else {
+            sections[3].items.push(v);
+        }
     }
 
     return sections.filter((s) => s.items.length > 0);
@@ -168,41 +284,88 @@ const buckets = computed(() => {
 
     <div class="flex h-full flex-1 flex-col">
         <div class="flex flex-1 flex-col gap-4 p-4 md:p-6">
-
             <!-- Hero banner -->
             <div
                 class="flex items-end gap-[22px] rounded-xl p-[26px_28px] text-white"
-                style="background: linear-gradient(180deg, var(--cherry) 0%, var(--cherry-deep) 100%)"
+                style="
+                    background: linear-gradient(
+                        180deg,
+                        var(--cherry) 0%,
+                        var(--cherry-deep) 100%
+                    );
+                "
             >
                 <div
                     class="flex size-[92px] shrink-0 items-center justify-center rounded-xl bg-white"
                     style="color: var(--cherry)"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="size-11" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.32 6.32 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.24 8.24 0 0 0 4.83 1.56V6.8a4.85 4.85 0 0 1-1.06-.11z"/>
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="size-11"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                    >
+                        <path
+                            d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.32 6.32 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.24 8.24 0 0 0 4.83 1.56V6.8a4.85 4.85 0 0 1-1.06-.11z"
+                        />
                     </svg>
                 </div>
 
                 <div class="min-w-0 flex-1">
-                    <p class="mb-[7px] text-[12px] font-bold uppercase tracking-[0.16em] text-white/70">Feed</p>
-                    <h1 class="text-[40px] font-bold leading-none tracking-[-0.03em] text-white">
+                    <p
+                        class="mb-[7px] text-[12px] font-bold tracking-[0.16em] text-white/70 uppercase"
+                    >
+                        Feed
+                    </p>
+                    <h1
+                        class="text-[40px] leading-none font-bold tracking-[-0.03em] text-white"
+                    >
                         All Videos
                     </h1>
                 </div>
 
                 <div class="flex items-center gap-[10px]">
+                    <!-- Latest-unwatched-per-channel cap toggle -->
                     <button
                         type="button"
                         :class="[
                             'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
-                            showWatched ? 'bg-white' : 'bg-white/10 text-white/90 hover:text-white',
+                            capOn
+                                ? 'bg-white'
+                                : 'bg-white/10 text-white/90 hover:text-white',
+                        ]"
+                        :style="capOn ? 'color: var(--cherry)' : ''"
+                        :aria-pressed="capOn"
+                        :title="
+                            capOn
+                                ? 'Showing latest unwatched video per channel'
+                                : 'Showing all videos'
+                        "
+                        @click="toggleCap"
+                    >
+                        <FunnelIcon class="size-[15px]" />
+                        <span>{{ capOn ? 'Latest only' : 'All videos' }}</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        :class="[
+                            'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
+                            showWatched
+                                ? 'bg-white'
+                                : 'bg-white/10 text-white/90 hover:text-white',
                         ]"
                         :style="showWatched ? 'color: var(--cherry)' : ''"
                         :aria-pressed="showWatched"
                         @click="showWatched = !showWatched"
                     >
-                        <component :is="showWatched ? EyeIcon : EyeSlashIcon" class="size-[15px]" />
-                        <span>{{ showWatched ? 'Showing watched' : 'Hiding watched' }}</span>
+                        <component
+                            :is="showWatched ? EyeIcon : EyeSlashIcon"
+                            class="size-[15px]"
+                        />
+                        <span>{{
+                            showWatched ? 'Showing watched' : 'Hiding watched'
+                        }}</span>
                     </button>
                 </div>
             </div>
@@ -222,76 +385,49 @@ const buckets = computed(() => {
 
                 <!-- Time-bucketed feed -->
                 <template v-else>
-                <template v-if="buckets.length === 0">
-                    <div class="rounded-xl border border-dashed p-8 text-center text-muted-foreground">
-                        No unwatched videos.
-                    </div>
-                </template>
-
-                <section v-for="bucket in buckets" :key="bucket.id" class="mb-8 last:mb-0">
-                    <div class="sticky top-0 z-10 mb-3 flex items-center gap-3 bg-background py-1">
-                        <span class="text-[11px] font-bold uppercase tracking-[0.14em] text-foreground">
-                            {{ bucket.label }}
-                        </span>
-                        <span class="rounded-[5px] bg-cherry px-2 py-[2px] text-[11px] text-white">
-                            {{ bucket.items.length }} video{{ bucket.items.length === 1 ? '' : 's' }}
-                        </span>
-                        <div class="h-px flex-1 bg-border" />
-                    </div>
-
-                    <div class="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    <template v-if="buckets.length === 0">
                         <div
-                            v-for="video in bucket.items"
-                            :key="video.youtube_video_id"
-                            class="group relative cursor-pointer overflow-hidden rounded-[5px] border-2 bg-card transition-opacity"
-                            :class="
-                                video.channel_is_favorite
-                                    ? video.user_state === 'watched'
-                                        ? 'border-[#d4a824] opacity-40 hover:opacity-70'
-                                        : 'border-[#d4a824]'
-                                    : video.user_state === 'watched'
-                                      ? 'border-border opacity-40 hover:opacity-70'
-                                      : 'border-border hover:border-foreground/30'
-                            "
-                            @click="onCardClick(video)"
-                            @contextmenu="openCtx($event, video)"
+                            class="rounded-xl border border-dashed p-8 text-center text-muted-foreground"
                         >
-                            <div class="relative aspect-video bg-muted">
-                                <img
-                                    v-if="video.thumbnail_url"
-                                    :src="video.thumbnail_url"
-                                    :alt="video.title"
-                                    class="h-full w-full object-cover"
-                                    loading="lazy"
-                                />
-                                <div
-                                    v-if="video.channel_is_favorite"
-                                    class="pointer-events-none absolute right-2 top-2 z-10"
-                                    aria-hidden="true"
-                                >
-                                    <StarIconSolid class="size-5 drop-shadow-md" style="color: #ecc94b" />
-                                </div>
-                            </div>
-
-                            <div class="p-[10px_11px_12px]">
-                                <p class="mb-2 line-clamp-2 min-h-9 text-[13px] font-semibold leading-[1.35] tracking-[-0.005em] text-foreground">
-                                    {{ video.title }}
-                                </p>
-                                <div class="flex items-center gap-2">
-                                    <span
-                                        class="flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
-                                        style="background: var(--cherry)"
-                                    >
-                                        {{ video.channel.name[0] }}
-                                    </span>
-                                    <span class="truncate text-[13px] text-muted-foreground">
-                                        {{ video.channel.name }}
-                                    </span>
-                                </div>
-                            </div>
+                            No unwatched videos.
                         </div>
-                    </div>
-                </section>
+                    </template>
+
+                    <section
+                        v-for="bucket in buckets"
+                        :key="bucket.id"
+                        class="mb-8 last:mb-0"
+                    >
+                        <div
+                            class="sticky top-0 z-10 mb-3 flex items-center gap-3 bg-background py-1"
+                        >
+                            <span
+                                class="text-[11px] font-bold tracking-[0.14em] text-foreground uppercase"
+                            >
+                                {{ bucket.label }}
+                            </span>
+                            <span
+                                class="rounded-[5px] bg-cherry px-2 py-[2px] text-[11px] text-white"
+                            >
+                                {{ bucket.items.length }} video{{
+                                    bucket.items.length === 1 ? '' : 's'
+                                }}
+                            </span>
+                            <div class="h-px flex-1 bg-border" />
+                        </div>
+
+                        <div
+                            class="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+                        >
+                            <VideoCard
+                                v-for="video in bucket.items"
+                                :key="video.youtube_video_id"
+                                :video="video"
+                                @card-click="onCardClick"
+                                @context-menu="openCtx"
+                            />
+                        </div>
+                    </section>
                 </template>
             </Deferred>
 
@@ -307,19 +443,28 @@ const buckets = computed(() => {
             >
                 <button
                     class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
-                    @click="setState(ctx.videoId!, 'watched'); closeCtx()"
+                    @click="
+                        setState(ctx.videoId!, 'watched');
+                        closeCtx();
+                    "
                 >
                     Mark watched
                 </button>
                 <button
                     class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
-                    @click="setState(ctx.videoId!, null); closeCtx()"
+                    @click="
+                        setState(ctx.videoId!, null);
+                        closeCtx();
+                    "
                 >
                     Mark unwatched
                 </button>
                 <button
                     class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
-                    @click="setState(ctx.videoId!, 'hidden'); closeCtx()"
+                    @click="
+                        setState(ctx.videoId!, 'hidden');
+                        closeCtx();
+                    "
                 >
                     Hide
                 </button>

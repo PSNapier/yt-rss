@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Channel;
 use App\Models\ChannelGroup;
+use App\Models\UserChannelCap;
 use App\Services\ChannelResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,6 +28,11 @@ class SubscriptionController extends Controller
             $user->favoritedChannels()->pluck('channels.id')->all()
         );
 
+        // Per-channel unwatched caps (0 = unlimited). Absent = default cap.
+        $caps = UserChannelCap::query()
+            ->where('user_id', $user->id)
+            ->pluck('cap', 'channel_id');
+
         $channels = Channel::query()
             ->whereHas('channelGroups', fn ($q) => $q->whereIn('channel_groups.id', $userGroupIds))
             ->with(['channelGroups' => fn ($q) => $q->whereIn('channel_groups.id', $userGroupIds)->select('channel_groups.id')])
@@ -38,6 +44,7 @@ class SubscriptionController extends Controller
                 'name' => $channel->name,
                 'last_fetched_at' => $channel->last_fetched_at,
                 'is_favorite' => isset($favoriteIds[$channel->id]),
+                'unwatched_cap' => $caps[$channel->id] ?? null,
                 'group_ids' => $channel->channelGroups->pluck('id')->all(),
             ])
             ->values()
@@ -151,6 +158,39 @@ class SubscriptionController extends Controller
             $user->favoritedChannels()->syncWithoutDetaching([$channel->id]);
         } else {
             $user->favoritedChannels()->detach($channel->id);
+        }
+
+        return back();
+    }
+
+    public function updateCap(Request $request, Channel $channel): RedirectResponse
+    {
+        $user = $request->user();
+
+        $userGroupIds = $user->channelGroups()->pluck('id')->all();
+        $isSubscribed = $channel->channelGroups()
+            ->whereIn('channel_groups.id', $userGroupIds)
+            ->exists();
+
+        if (! $isSubscribed) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'cap' => 'nullable|integer|min:0|max:1000',
+        ]);
+
+        // Null clears the custom cap and reverts the channel to the default.
+        if (($validated['cap'] ?? null) === null) {
+            UserChannelCap::query()
+                ->where('user_id', $user->id)
+                ->where('channel_id', $channel->id)
+                ->delete();
+        } else {
+            UserChannelCap::updateOrCreate(
+                ['user_id' => $user->id, 'channel_id' => $channel->id],
+                ['cap' => $validated['cap']],
+            );
         }
 
         return back();

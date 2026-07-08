@@ -18,9 +18,12 @@ class GroupFeedController extends Controller
 
         $userId = $request->user()->id;
 
+        $capEnabled = (bool) $request->user()->feed_cap_enabled;
+
         return Inertia::render('Groups/Show', [
             'group' => $group->only(['id', 'name', 'icon']),
-            'videos' => Inertia::defer(function () use ($request, $fetcher, $group, $userId) {
+            'capEnabled' => $capEnabled,
+            'videos' => Inertia::defer(function () use ($request, $fetcher, $group, $userId, $capEnabled) {
                 // Only refresh RSS on the first (cursorless) load, not on every paginate.
                 if (! $request->filled('cursor')) {
                     $fetcher->fetchForGroup($group);
@@ -53,6 +56,7 @@ class GroupFeedController extends Controller
                         $q->whereNull('user_video_states.state')
                             ->orWhere('user_video_states.state', '!=', 'hidden');
                     })
+                    ->when($capEnabled, fn ($q) => $q->unwatchedCappedPerChannel($userId))
                     ->with(['channel:id,channel_id,name'])
                     ->orderByDesc('videos.published_at')
                     ->orderByDesc('videos.id')
