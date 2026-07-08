@@ -33,7 +33,7 @@ Video card titles no longer get cut off awkwardly. The line clamp and reserved h
 
 ## [002] Persist loaded videos across group/tab switches
 
-**Status:** `todo`
+**Status:** `done`
 **Mode:** `Auto`
 **Depends On:** none
 
@@ -56,9 +56,9 @@ After clicking "Load more", switching to another group and returning keeps the e
 
 ### Acceptance Criteria
 
-- [ ] Loading more to N videos (N > page size), switching to another group, and returning shows the same N videos, in the same order, without a re-fetch to page one
-- [ ] On return, the `nextUrl` cursor resumes from where it left off (the next "Load more" fetches page N+1, not page 2) and `olderExpanded` matches its pre-navigation value
-- [ ] Both `Groups/Show.vue` and `Videos/Feed.vue` pass this same round-trip check
+- [x] Loading more to N videos (N > page size), switching to another group, and returning shows the same N videos, in the same order, without a re-fetch to page one
+- [x] On return, the `nextUrl` cursor resumes from where it left off (the next "Load more" fetches page N+1, not page 2) and `olderExpanded` matches its pre-navigation value
+- [x] Both `Groups/Show.vue` and `Videos/Feed.vue` pass this same round-trip check
 
 ---
 

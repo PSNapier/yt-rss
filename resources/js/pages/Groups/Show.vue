@@ -4,6 +4,7 @@ import { Deferred, Head, router, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import FeedGridSkeleton from '@/components/FeedGridSkeleton.vue';
 import VideoCard from '@/components/VideoCard.vue';
+import { getFeedCache, saveFeedCache } from '@/composables/useFeedCache';
 import { resolveGroupIcon } from '@/lib/groupIcons';
 import subscriptions from '@/routes/subscriptions';
 import videoRoutes from '@/routes/videos';
@@ -45,21 +46,72 @@ const loadingMore = ref(false);
 const showWatched = ref(true);
 const olderExpanded = ref(false);
 
+const cacheKey = computed(() => `group:${props.group.id}`);
+const loadedKey = ref<string | null>(null);
+// True once the current feed was restored from cache, so the deferred
+// page-one payload that arrives on navigation is ignored instead of
+// clobbering the richer restored state.
+const hydratedFromCache = ref(false);
+
+const applyItems = (data: Video[], next: string | null) => {
+    items.splice(0, items.length, ...data);
+    nextUrl.value = next;
+};
+
+// Restore (or switch to) a feed's cached state. Runs on mount and whenever
+// the group changes without a remount (Inertia reuses the page component).
+watch(
+    cacheKey,
+    (key) => {
+        loadedKey.value = key;
+        const cached = getFeedCache<Video>(key);
+
+        if (cached) {
+            applyItems(cached.items, cached.nextUrl);
+            olderExpanded.value = cached.olderExpanded;
+            hydratedFromCache.value = true;
+        } else {
+            applyItems([], null);
+            olderExpanded.value = false;
+            hydratedFromCache.value = false;
+        }
+    },
+    { immediate: true },
+);
+
 watch(
     () => props.videos,
     (v) => {
         if (!v) {
-            items.splice(0, items.length);
-            nextUrl.value = null;
-            olderExpanded.value = false;
+            return;
+        }
+
+        // Cache already restored richer state for this feed; ignore the
+        // deferred first page so "Load more" progress survives the round trip.
+        if (hydratedFromCache.value) {
+            hydratedFromCache.value = false;
 
             return;
         }
 
-        items.splice(0, items.length, ...v.data);
-        nextUrl.value = v.next_page_url;
+        applyItems(v.data, v.next_page_url);
     },
     { immediate: true },
+);
+
+// Persist loaded videos, cursor, and expand state so returning restores them.
+watch(
+    [items, nextUrl, olderExpanded],
+    () => {
+        if (loadedKey.value) {
+            saveFeedCache(loadedKey.value, {
+                items,
+                nextUrl: nextUrl.value,
+                olderExpanded: olderExpanded.value,
+            });
+        }
+    },
+    { deep: true },
 );
 
 // Right-click context menu

@@ -4,6 +4,7 @@ import { Deferred, Head, router, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import FeedGridSkeleton from '@/components/FeedGridSkeleton.vue';
 import VideoCard from '@/components/VideoCard.vue';
+import { getFeedCache, saveFeedCache } from '@/composables/useFeedCache';
 import videoRoutes from '@/routes/videos';
 
 interface Channel {
@@ -39,20 +40,55 @@ const nextUrl = ref<string | null>(null);
 const loadingMore = ref(false);
 const showWatched = ref(true);
 
+const cacheKey = 'all';
+// True once the feed was restored from cache, so the deferred page-one
+// payload that arrives on navigation is ignored instead of clobbering it.
+const hydratedFromCache = ref(false);
+
+const applyItems = (data: Video[], next: string | null) => {
+    items.splice(0, items.length, ...data);
+    nextUrl.value = next;
+};
+
+// Restore cached state on mount so returning keeps loaded videos + cursor.
+const cached = getFeedCache<Video>(cacheKey);
+
+if (cached) {
+    applyItems(cached.items, cached.nextUrl);
+    hydratedFromCache.value = true;
+}
+
 watch(
     () => props.videos,
     (v) => {
         if (!v) {
-            items.splice(0, items.length);
-            nextUrl.value = null;
+            return;
+        }
+
+        // Cache already restored richer state; ignore the deferred first page
+        // so infinite-scroll progress survives the round trip.
+        if (hydratedFromCache.value) {
+            hydratedFromCache.value = false;
 
             return;
         }
 
-        items.splice(0, items.length, ...v.data);
-        nextUrl.value = v.next_page_url;
+        applyItems(v.data, v.next_page_url);
     },
     { immediate: true },
+);
+
+// Persist loaded videos + cursor so returning restores them.
+watch(
+    [items, nextUrl],
+    () => {
+        saveFeedCache(cacheKey, {
+            items,
+            nextUrl: nextUrl.value,
+            olderExpanded: false,
+        });
+    },
+    { deep: true },
 );
 
 const ctx = reactive({
