@@ -28,3 +28,9 @@ export function saveFeedCache<T extends object>(
         olderExpanded: entry.olderExpanded,
     });
 }
+
+// Drop all cached feed state. Call after changes that alter what the feed
+// should show (e.g. editing per-channel caps) so the next visit refetches.
+export function clearFeedCache(): void {
+    cache.clear();
+}

@@ -35,6 +35,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('subscriptions', [SubscriptionController::class, 'store'])->name('subscriptions.store');
     Route::patch('subscriptions/{channel}/groups', [SubscriptionController::class, 'updateGroups'])->name('subscriptions.update-groups');
     Route::patch('subscriptions/{channel}/favorite', [SubscriptionController::class, 'toggleFavorite'])->name('subscriptions.toggle-favorite');
+    Route::patch('subscriptions/{channel}/cap', [SubscriptionController::class, 'updateCap'])->name('subscriptions.update-cap');
     Route::delete('subscriptions/{channel}', [SubscriptionController::class, 'destroy'])->name('subscriptions.destroy');
 
     Route::post('videos/{youtubeVideoId}/state', [VideoStateController::class, 'store'])->name('videos.state.store');

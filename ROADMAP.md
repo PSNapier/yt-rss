@@ -128,7 +128,7 @@ A toggleable mode that shows only the latest unwatched video per channel. Markin
 
 ## [005] Editable per-subscription unwatched video cap
 
-**Status:** `todo`
+**Status:** `done`
 **Mode:** `Auto`
 **Depends On:** `[004]`
 
@@ -151,9 +151,9 @@ Let the user set the max number of unwatched videos shown per subscription (e.g.
 
 ### Acceptance Criteria
 
-- [ ] Each subscription stores an `unwatched_cap` that persists across reloads; setting it to a value M limits that channel to at most M unwatched videos in the feed
-- [ ] The feed enforces per-channel caps simultaneously: with caps of 2 and 5 on two channels, the feed shows at most 2 and at most 5 unwatched videos from them respectively
-- [ ] A new subscription starts at the documented default cap without manual configuration, and an "unlimited" setting removes the cap entirely (all unwatched videos show)
-- [ ] The per-channel cap is editable from the UI and the changed value takes effect on the next feed render without a full reload
+- [x] Each subscription stores an `unwatched_cap` that persists across reloads; setting it to a value M limits that channel to at most M unwatched videos in the feed
+- [x] The feed enforces per-channel caps simultaneously: with caps of 2 and 5 on two channels, the feed shows at most 2 and at most 5 unwatched videos from them respectively
+- [x] A new subscription starts at the documented default cap without manual configuration, and an "unlimited" setting removes the cap entirely (all unwatched videos show)
+- [x] The per-channel cap is editable from the UI and the changed value takes effect on the next feed render without a full reload
 
 ---

@@ -57,7 +57,7 @@ class AllVideosFeedController extends Controller
                         $q->whereNull('user_video_states.state')
                             ->orWhere('user_video_states.state', '!=', 'hidden');
                     })
-                    ->when($capEnabled, fn ($q) => $q->unwatchedCapped($userId))
+                    ->when($capEnabled, fn ($q) => $q->unwatchedCappedPerChannel($userId))
                     ->with(['channel:id,channel_id,name'])
                     ->orderByDesc('videos.published_at')
                     ->orderByDesc('videos.id')
