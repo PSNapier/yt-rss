@@ -21,8 +21,11 @@ class AllVideosFeedController extends Controller
             ->distinct()
             ->pluck('cgc.channel_id');
 
+        $capEnabled = (bool) $user->feed_cap_enabled;
+
         return Inertia::render('Videos/Feed', [
-            'videos' => Inertia::defer(function () use ($request, $fetcher, $subscribedChannelIds, $userId) {
+            'capEnabled' => $capEnabled,
+            'videos' => Inertia::defer(function () use ($request, $fetcher, $subscribedChannelIds, $userId, $capEnabled) {
                 // Only refresh RSS on the first (cursorless) load, not on every paginate.
                 if (! $request->filled('cursor')) {
                     $fetcher->fetchForChannels(
@@ -54,6 +57,7 @@ class AllVideosFeedController extends Controller
                         $q->whereNull('user_video_states.state')
                             ->orWhere('user_video_states.state', '!=', 'hidden');
                     })
+                    ->when($capEnabled, fn ($q) => $q->unwatchedCapped($userId))
                     ->with(['channel:id,channel_id,name'])
                     ->orderByDesc('videos.published_at')
                     ->orderByDesc('videos.id')

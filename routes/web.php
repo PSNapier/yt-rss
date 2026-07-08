@@ -4,6 +4,7 @@ use App\Http\Controllers\AllGroupsImportExportController;
 use App\Http\Controllers\AllVideosFeedController;
 use App\Http\Controllers\ChannelController;
 use App\Http\Controllers\ChannelGroupController;
+use App\Http\Controllers\FeedCapController;
 use App\Http\Controllers\GroupFeedController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\VideoStateController;
@@ -28,6 +29,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('channels/search', [ChannelController::class, 'search'])->name('channels.search');
 
     Route::get('feed', [AllVideosFeedController::class, 'index'])->name('feed.index');
+    Route::post('feed/cap', [FeedCapController::class, 'update'])->name('feed.cap');
 
     Route::get('subscriptions', [SubscriptionController::class, 'index'])->name('subscriptions.index');
     Route::post('subscriptions', [SubscriptionController::class, 'store'])->name('subscriptions.store');

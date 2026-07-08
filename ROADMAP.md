@@ -95,7 +95,7 @@ Document every field YouTube's channel RSS feed exposes and which the app curren
 
 ## [004] Video count cap MVP — latest unwatched only
 
-**Status:** `todo`
+**Status:** `done`
 **Mode:** `Auto`
 **Depends On:** `[003]`
 
@@ -119,10 +119,10 @@ A toggleable mode that shows only the latest unwatched video per channel. Markin
 
 ### Acceptance Criteria
 
-- [ ] The toggle persists per user and its state survives a page reload
-- [ ] With the cap on, the feed contains at most one unwatched video per channel (the newest by `published_at`); a channel with zero unwatched videos contributes none
-- [ ] Marking that video watched removes it and surfaces exactly that channel's next-newest unwatched video (or none if the channel has no more), leaving other channels unchanged
-- [ ] Toggling off returns the feed to the full unfiltered list (same count and order as with the cap disabled)
+- [x] The toggle persists per user and its state survives a page reload
+- [x] With the cap on, the feed contains at most one unwatched video per channel (the newest by `published_at`); a channel with zero unwatched videos contributes none
+- [x] Marking that video watched removes it and surfaces exactly that channel's next-newest unwatched video (or none if the channel has no more), leaving other channels unchanged
+- [x] Toggling off returns the feed to the full unfiltered list (same count and order as with the cap disabled)
 
 ---
 

@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { EyeIcon, EyeSlashIcon, WrenchIcon } from '@heroicons/vue/24/outline';
+import {
+    EyeIcon,
+    EyeSlashIcon,
+    FunnelIcon,
+    WrenchIcon,
+} from '@heroicons/vue/24/outline';
 import { Deferred, Head, router, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import FeedGridSkeleton from '@/components/FeedGridSkeleton.vue';
 import VideoCard from '@/components/VideoCard.vue';
 import { getFeedCache, saveFeedCache } from '@/composables/useFeedCache';
 import { resolveGroupIcon } from '@/lib/groupIcons';
+import feed from '@/routes/feed';
 import subscriptions from '@/routes/subscriptions';
 import videoRoutes from '@/routes/videos';
 
@@ -36,6 +42,7 @@ interface CursorPaginator<T> {
 const props = defineProps<{
     group: { id: number; name: string; icon: string | null };
     videos?: CursorPaginator<Video>;
+    capEnabled?: boolean;
 }>();
 
 defineOptions({});
@@ -45,6 +52,7 @@ const nextUrl = ref<string | null>(null);
 const loadingMore = ref(false);
 const showWatched = ref(true);
 const olderExpanded = ref(false);
+const capOn = ref(props.capEnabled ?? false);
 
 const cacheKey = computed(() => `group:${props.group.id}`);
 const loadedKey = ref<string | null>(null);
@@ -158,7 +166,31 @@ const setState = (
     router.post(
         videoRoutes.state.store(youtubeVideoId).url,
         { state },
-        { preserveScroll: true, preserveState: true },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            // With the cap on, a state change alters which unwatched video
+            // each channel surfaces, so refetch the capped feed.
+            onSuccess: () => {
+                if (capOn.value) {
+                    router.reload({ only: ['videos'] });
+                }
+            },
+        },
+    );
+};
+
+// Toggle the per-user cap, persist it, then refetch the feed with the new mode.
+const toggleCap = () => {
+    capOn.value = !capOn.value;
+    router.post(
+        feed.cap().url,
+        { enabled: capOn.value },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => router.reload({ only: ['videos'] }),
+        },
     );
 };
 
@@ -351,6 +383,30 @@ const onLoadMoreClick = () => {
                     </div>
 
                     <div class="flex items-center gap-[10px]">
+                        <!-- Latest-unwatched-per-channel cap toggle -->
+                        <button
+                            type="button"
+                            :class="[
+                                'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
+                                capOn
+                                    ? 'bg-white'
+                                    : 'bg-white/10 text-white/90 hover:text-white',
+                            ]"
+                            :style="capOn ? 'color: var(--cherry)' : ''"
+                            :aria-pressed="capOn"
+                            :title="
+                                capOn
+                                    ? 'Showing latest unwatched video per channel'
+                                    : 'Showing all videos'
+                            "
+                            @click="toggleCap"
+                        >
+                            <FunnelIcon class="size-[15px]" />
+                            <span>{{
+                                capOn ? 'Latest only' : 'All videos'
+                            }}</span>
+                        </button>
+
                         <!-- Show/hide watched toggle -->
                         <button
                             type="button"
