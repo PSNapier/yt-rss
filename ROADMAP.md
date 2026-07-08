@@ -4,7 +4,7 @@
 
 ## [001] Fix video card title truncation / ellipsis overflow
 
-**Status:** `todo`
+**Status:** `done`
 **Mode:** `Auto`
 **Depends On:** none
 
@@ -25,9 +25,9 @@ Video card titles no longer get cut off awkwardly. The line clamp and reserved h
 
 ### Acceptance Criteria
 
-- [ ] A title exceeding 2 lines renders exactly 2 lines terminated by an ellipsis, with no third-line text or descender clipping visible
-- [ ] Cards in the same row have identical rendered height (±0px) whether their title is 1 or 2 lines
-- [ ] The title clamp value and reserved min-height are defined in exactly one place (shared component), and both `Groups/Show.vue` and `Videos/Feed.vue` render titles through it
+- [x] A title exceeding 2 lines renders exactly 2 lines terminated by an ellipsis, with no third-line text or descender clipping visible
+- [x] Cards in the same row have identical rendered height (±0px) whether their title is 1 or 2 lines
+- [x] The title clamp value and reserved min-height are defined in exactly one place (shared component), and both `Groups/Show.vue` and `Videos/Feed.vue` render titles through it
 
 ---
 
