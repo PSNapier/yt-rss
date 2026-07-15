@@ -3,7 +3,7 @@
 ## [001] Fix video card title truncation / ellipsis overflow
 
 **Status:** `done`
-**Mode:** `Auto`
+**Mode:** `auto`
 **Depends On:** none
 
 ### Goal
@@ -32,7 +32,7 @@ Video card titles no longer get cut off awkwardly. The line clamp and reserved h
 ## [002] Persist loaded videos across group/tab switches
 
 **Status:** `done`
-**Mode:** `Auto`
+**Mode:** `auto`
 **Depends On:** none
 
 ### Goal
@@ -63,7 +63,7 @@ After clicking "Load more", switching to another group and returning keeps the e
 ## [003] Audit available RSS feed fields
 
 **Status:** `done`
-**Mode:** `Auto`
+**Mode:** `auto`
 **Depends On:** none
 
 ### Goal
@@ -94,7 +94,7 @@ Document every field YouTube's channel RSS feed exposes and which the app curren
 ## [004] Video count cap MVP — latest unwatched only
 
 **Status:** `done`
-**Mode:** `Auto`
+**Mode:** `auto`
 **Depends On:** `[003]`
 
 ### Goal
@@ -127,7 +127,7 @@ A toggleable mode that shows only the latest unwatched video per channel. Markin
 ## [005] Editable per-subscription unwatched video cap
 
 **Status:** `done`
-**Mode:** `Auto`
+**Mode:** `auto`
 **Depends On:** `[004]`
 
 ### Goal
