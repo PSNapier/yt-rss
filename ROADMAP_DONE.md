@@ -79,13 +79,13 @@ Document every field YouTube's channel RSS feed exposes and which the app curren
 ### Technical Notes
 
 - Parsing happens in `app/Services/RssFetcher.php::ingest()` (`simplexml_load_string`, `yt` and `media` namespaces)
-- Findings written to `RSS_FEED_AUDIT.md` at the project root
+- Findings written to `reference/RSS_FEED_AUDIT.md`
 - Key result: the feed provides `media:community/media:statistics @views` and `media:starRating` (average, count) plus `media:description`, `updated`, and author info. None of these are stored today; only `yt:videoId`, `title`, `published`, and one `media:thumbnail` URL are ingested
 - There is a usable popularity signal (views + star rating), but only as a point-in-time snapshot at fetch, not a historical trend
 
 ### Acceptance Criteria
 
-- [x] `RSS_FEED_AUDIT.md` exists at project root listing all feed fields
+- [x] `reference/RSS_FEED_AUDIT.md` exists listing all feed fields
 - [x] Current usage vs unused fields documented
 - [x] Popularity availability noted
 

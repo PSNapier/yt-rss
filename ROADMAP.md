@@ -1,6 +1,6 @@
 # Roadmap
 
-<!-- Next task number: [023] -->
+<!-- Next task number: [024] -->
 
 ## [006] Stop feed reverting to skeleton + scroll reset on tab return
 
@@ -477,7 +477,7 @@ Prove YouTube WebSub (PubSubHubbub) push end-to-end for real channels: subscribe
 - **Confirm empirically before relying on it:** initial verification timing, lease duration actually granted, and redelivery behavior on callback 5xx. This is why the entry is `Manual`
 - Set a **browser-like User-Agent** on the add-time poll; non-browser UAs get throttled harder
 - Keep the existing synchronous in-render fetch in place as a fallback during MVP; retiring it (Finding F1) is `[022]`
-- Reuses `RssFetcher::ingest` (`app/Services/RssFetcher.php`) as the push/poll write path. See `FEED_PIPELINE_AUDIT.md` (Finding F1) for the pipeline this replaces
+- Reuses `RssFetcher::ingest` (`app/Services/RssFetcher.php`) as the push/poll write path. See `reference/FEED_PIPELINE_AUDIT.md` (Finding F1) for the pipeline this replaces
 - **Out of scope:** channel-ID acquisition for onboarding (Data API lookup, webview scrape, or extension) is orthogonal to push vs. poll and is tracked as a separate future task
 
 ### Acceptance Criteria
@@ -521,3 +521,44 @@ Make push durable and turn the feed controllers into pure DB reads. Renew leases
 - [ ] A deliberately dropped push (callback offline during delivery) is recovered by the backstop
 - [ ] Feed controllers perform no network I/O — first paint is a pure DB read
 - [ ] Remaining polls send a browser UA, gzip, and conditional GET, and honor 304s
+
+---
+
+## [023] Add channels by URL or @handle (YouTube Data API, quota-capped)
+
+**Status:** `todo`
+**Mode:** `Manual`
+**Depends On:** none
+
+### Goal
+
+Let a user add a channel by pasting a YouTube channel URL or an @handle, not only a raw UC id. Resolution uses the YouTube Data API only where needed, self-capped at 9500 units/day with a soft "daily new-channel cap reached, try again soon" message when exhausted. Supersedes [013] (the smart input replaces the always-visible id-only field). This is the channel-ID acquisition work deferred by [021].
+
+### Scope
+
+- One smart add-input in Subscriptions.vue accepting a UC id, a channel URL, or an @handle
+- Backend input sniffing that routes to a free local parse or a counted Data API resolve
+- A nullable `handle` column on `channels` to cache handle -> channel_id and dedupe repeat adds for free
+- A durable daily API-usage counter (DB row keyed by Pacific date) and a soft cap at 9500
+- The cap message on API-requiring adds only; free-path adds still succeed when capped
+
+### Technical Notes
+
+- Accepted forms: raw `UC…` and `/channel/UC…` URLs parse locally (free, no tick); `@handle` and `/@handle` URLs use Data API `forHandle` (1 unit); `/user/legacyname` uses `forUsername` (1 unit). `/c/` custom URLs are rejected with "paste the @handle instead" (no 100-unit search.list, no scraping).
+- Counter ticks **per real Data API call**, including calls returning zero results. Route **every** Data API request through one counted client — including the name-enrichment fallback `ChannelResolver::lookupChannelName()` (`ChannelResolver.php:148-165`), so no spend escapes the budget. Prefer the id+snippet that `forHandle`/`forUsername` already returns so name enrichment needs no extra unit.
+- `ChannelResolver::fromHandle()` (`ChannelResolver.php:45-84`) already exists but throws if no key; extend it to also handle `/user/` and to persist the resolved `handle`. `fromChannelId()` (`:21-38`) stays the free path; add a URL-sniffing entrypoint that extracts `UC…` from `/channel/…` URLs and dispatches the rest.
+- Counter storage: a small table (e.g. `youtube_api_usage` with `date_pt`, `units_used`) with an atomic increment, keyed by `America/Los_Angeles` date to match Google's midnight-Pacific reset. Follow the per-user persistence pattern of `FeedCapController` / `UserChannelCap` (`updateOrCreate` with a sentinel) as the closest existing template, but this counter is **global**, not per-user.
+- Cap behavior: check remaining budget **before** an API call. If a resolution would need the API and budget is exhausted, reject with the cap message surfaced as a `value` validation error (matching how `SubscriptionController::store` rethrows resolver failures at `:85-87`). Free-path (`UC…`, `/channel/…`) and cached-handle adds bypass the check.
+- Migration: add nullable `handle` (indexed) to `channels` (`2026_05_04_170004_create_channels_table.php` schema; model fillable at `Channel.php:12`). Backfill is unnecessary — handle populates lazily on next resolve.
+- Frontend: replace the "Add by channel ID" collapsible (`Subscriptions.vue:484-543`) with one always-visible input; `submitIdForm` (`:163-178`) posts to `subscriptions.store` (`POST /subscriptions`) with a single `value`. Backend derives `mode` from the value shape (drop the client-sent `mode` reliance, or keep `mode` but add an `auto` branch). Keep the group-selection guard.
+- **Prerequisite:** a real `YOUTUBE_API_KEY` / `services.youtube.api_key` provisioned against a Google Cloud project with the Data API enabled. `fromHandle()` throws without it.
+- **Manual** because it depends on external API-key provisioning and needs empirical verification of `forHandle`/`forUsername` behavior against live channels.
+
+### Acceptance Criteria
+
+- [ ] Pasting a `/channel/UC…` URL or a raw `UC…` id adds the channel with zero Data API units spent and no counter tick
+- [ ] Pasting an `@handle`, `/@handle` URL, or `/user/…` URL resolves via the Data API, spends exactly one unit, ticks the counter, and stores the handle
+- [ ] Re-adding a previously resolved `@handle` is a free local lookup (no unit, no tick)
+- [ ] A `/c/` custom URL is rejected with a message directing the user to the @handle
+- [ ] When the counter reaches 9500, an API-requiring add is refused with "daily new-channel cap reached, try again soon", while a `UC…`/`/channel/…` add still succeeds
+- [ ] The counter is stored durably and resets at midnight America/Los_Angeles
