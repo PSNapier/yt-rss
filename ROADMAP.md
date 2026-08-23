@@ -450,41 +450,6 @@ Logged-in users stay authenticated for up to 90 days instead of the current defa
 
 ---
 
-## [022] WebSub hardening: renewal, backstop, retire sync fetch
-
-**Status:** `todo`
-**Mode:** `Manual`
-**Depends On:** [021]
-
-### Goal
-
-Make push durable and turn the feed controllers into pure DB reads. Renew leases before expiry, close silent-failure holes with a cheap failure-driven backstop, and retire the synchronous in-render RSS fetch (Finding F1).
-
-### Scope
-
-- **Renewal job** (scheduled): re-subscribe channels before lease expiry (~5-10 days). This is the main ongoing bookkeeping
-- **Reconciliation backstop** (scheduled but **failure/anomaly-driven**, not freshness-driven): re-poll only when a renewal is detected failed, or when a channel is anomalously silent versus its own posting cadence. Covers dropped pushes (callback down during delivery) and lapsed leases. Do **not** reduce this to "poll only on add" — without the backstop, a dropped push or lapsed lease is invisible, permanent data loss
-- **Retire the synchronous in-controller fetch** (Finding F1): controllers become pure DB reads; ingestion happens only via push plus the two poll paths
-- **Polling politeness** on the polls that remain: browser-like User-Agent, gzip, and conditional GET (If-None-Match / If-Modified-Since -> 304)
-- **Monitoring**: alert on failed renewals and callback downtime
-
-### Technical Notes
-
-- **Prerequisite:** a wired scheduler/cron. None exists today (no `schedule->` calls anywhere). Add scheduled entries for renewal + backstop
-- Retiring F1 interacts with `[006]` and `[010]` (both reason about the in-render fetch and first paint); sequence this after those or reconcile their Technical Notes when built
-- A daily full sweep at 100k channels is ~1.15 req/sec (safe), but failure-driven keeps backstop volume near zero while still closing the hole
-- Size the web tier for **bursts** (premieres cluster at the top of the hour), not average load
-- Reuse `RssFetcher::ingest` (`app/Services/RssFetcher.php`) as the poll write path
-
-### Acceptance Criteria
-
-- [ ] Leases are renewed before expiry without manual intervention; a failed renewal raises an alert
-- [ ] A deliberately dropped push (callback offline during delivery) is recovered by the backstop
-- [ ] Feed controllers perform no network I/O — first paint is a pure DB read
-- [ ] Remaining polls send a browser UA, gzip, and conditional GET, and honor 304s
-
----
-
 ## [023] Add channels by URL or @handle (YouTube Data API, quota-capped)
 
 **Status:** `todo`

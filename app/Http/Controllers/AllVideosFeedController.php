@@ -2,16 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Channel;
 use App\Models\Video;
-use App\Services\RssFetcher;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class AllVideosFeedController extends Controller
 {
-    public function index(Request $request, RssFetcher $fetcher): Response
+    public function index(Request $request): Response
     {
         $user = $request->user();
         $userId = $user->id;
@@ -25,14 +23,8 @@ class AllVideosFeedController extends Controller
 
         return Inertia::render('Videos/Feed', [
             'capEnabled' => $capEnabled,
-            'videos' => Inertia::defer(function () use ($request, $fetcher, $subscribedChannelIds, $userId, $capEnabled) {
-                // Only refresh RSS on the first (cursorless) load, not on every paginate.
-                if (! $request->filled('cursor')) {
-                    $fetcher->fetchForChannels(
-                        Channel::whereIn('id', $subscribedChannelIds)->get()
-                    );
-                }
-
+            'videos' => Inertia::defer(function () use ($subscribedChannelIds, $userId, $capEnabled) {
+                // Pure DB read: ingestion is push-driven (WebSub) plus the scheduled poll paths.
                 return Video::query()
                     ->select([
                         'videos.id',

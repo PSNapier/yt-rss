@@ -29,7 +29,7 @@ class RssFetcher
     /**
      * Fetch RSS for all channels in a group, refreshing stale ones.
      *
-     * @return array{fetched: int, failed: int, skipped: int}
+     * @return array{fetched: int, failed: int, skipped: int, not_modified: int}
      */
     public function fetchForGroup(ChannelGroup $group, bool $force = false): array
     {
@@ -40,7 +40,7 @@ class RssFetcher
      * Fetch RSS for a collection of channels, refreshing stale ones.
      *
      * @param  Collection<int, Channel>  $channels
-     * @return array{fetched: int, failed: int, skipped: int}
+     * @return array{fetched: int, failed: int, skipped: int, not_modified: int}
      */
     public function fetchForChannels(Collection $channels, bool $force = false): array
     {
@@ -49,19 +49,23 @@ class RssFetcher
         )->values();
 
         if ($stale->isEmpty()) {
-            return ['fetched' => 0, 'failed' => 0, 'skipped' => $channels->count()];
+            return [
+                'fetched' => 0,
+                'failed' => 0,
+                'skipped' => $channels->count(),
+                'not_modified' => 0,
+            ];
         }
 
         $fetched = 0;
         $failed = 0;
+        $notModified = 0;
 
         foreach ($stale->chunk($this->poolChunkSize) as $batch) {
-            $userAgent = (string) config('services.websub.user_agent');
-
             $responses = Http::pool(fn (Pool $pool) => $batch->map(
                 fn (Channel $c) => $pool
                     ->as((string) $c->id)
-                    ->withHeaders(['User-Agent' => $userAgent])
+                    ->withHeaders($this->pollHeaders($c))
                     ->connectTimeout($this->connectTimeoutSeconds)
                     ->timeout($this->timeoutSeconds)
                     ->get($c->rssUrl())
@@ -69,6 +73,18 @@ class RssFetcher
 
             foreach ($batch as $channel) {
                 $resp = $responses[(string) $channel->id] ?? null;
+
+                if ($resp instanceof Response && $resp->status() === 304) {
+                    $notModified++;
+                    $channel->forceFill(array_filter([
+                        'last_fetched_at' => now(),
+                        // Some origins rotate validators on a 304; keep ours current.
+                        'rss_etag' => $this->validator($resp->header('ETag')),
+                        'rss_last_modified' => $this->validator($resp->header('Last-Modified')),
+                    ], fn ($value) => $value !== null))->save();
+
+                    continue;
+                }
 
                 if (! $resp instanceof Response || ! $resp->successful()) {
                     $failed++;
@@ -82,7 +98,11 @@ class RssFetcher
 
                 try {
                     $this->ingest($channel, $resp->body());
-                    $channel->forceFill(['last_fetched_at' => now()])->save();
+                    $channel->forceFill([
+                        'last_fetched_at' => now(),
+                        'rss_etag' => $this->validator($resp->header('ETag')),
+                        'rss_last_modified' => $this->validator($resp->header('Last-Modified')),
+                    ])->save();
                     $fetched++;
                 } catch (\Throwable $e) {
                     $failed++;
@@ -98,7 +118,54 @@ class RssFetcher
             'fetched' => $fetched,
             'failed' => $failed,
             'skipped' => $channels->count() - $stale->count(),
+            'not_modified' => $notModified,
         ];
+    }
+
+    /**
+     * A cache validator we are willing to store and replay.
+     *
+     * The origin controls this value, so an oversized or control-character-laden
+     * header must not be written to a fixed-width column (a failed write would
+     * also lose `last_fetched_at` and pin the channel as permanently stale).
+     */
+    protected function validator(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $clean = preg_replace('/[^ -~]/', '', $value) ?? '';
+
+        if ($clean === '' || strlen($clean) > 200) {
+            return null;
+        }
+
+        return $clean;
+    }
+
+    /**
+     * Polite polling headers: browser UA, gzip, and conditional GET validators.
+     *
+     * @return array<string, string>
+     */
+    protected function pollHeaders(Channel $channel): array
+    {
+        $headers = [
+            'User-Agent' => (string) config('services.websub.user_agent'),
+            'Accept-Encoding' => 'gzip, deflate',
+            'Accept' => 'application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8',
+        ];
+
+        if (filled($channel->rss_etag)) {
+            $headers['If-None-Match'] = (string) $channel->rss_etag;
+        }
+
+        if (filled($channel->rss_last_modified)) {
+            $headers['If-Modified-Since'] = (string) $channel->rss_last_modified;
+        }
+
+        return $headers;
     }
 
     protected function isStale(Channel $channel): bool

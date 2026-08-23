@@ -121,4 +121,6 @@ Implication for `[022]`: a 5-day lease means renewal must run well inside 5 days
 - Set `APP_URL` to the public HTTPS site.
 - Leave `WEBSUB_CALLBACK_BASE` empty (falls back to `APP_URL`), or set it explicitly to the public origin.
 - Ensure `/websub/*` is reachable without auth (already outside the `auth` middleware group; CSRF-exempt).
-- Queue worker not required for MVP (subscribe/backfill run sync at add-time).
+- Queue worker not required (subscribe/backfill run sync at add-time).
+- **Scheduler required** since `[022]`: run `php artisan schedule:work`, or the cron entry `* * * * * cd /path && php artisan schedule:run >> /dev/null 2>&1`. Without it, leases lapse and the backstop never runs.
+- Optional: set `WEBSUB_ALERT_WEBHOOK` so renewal failures reach a chat channel. Without it, failures are `Log::error` only.

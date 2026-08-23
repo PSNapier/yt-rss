@@ -18,6 +18,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'lease_seconds',
     'expires_at',
     'last_verified_at',
+    'renewal_failures',
+    'last_renewal_attempt_at',
+    'last_delivery_at',
+    'delivery_failed_at',
+    'recovery_due_at',
 ])]
 class ChannelSubscription extends Model
 {
@@ -31,6 +36,11 @@ class ChannelSubscription extends Model
             'lease_seconds' => 'integer',
             'expires_at' => 'datetime',
             'last_verified_at' => 'datetime',
+            'renewal_failures' => 'integer',
+            'last_renewal_attempt_at' => 'datetime',
+            'last_delivery_at' => 'datetime',
+            'delivery_failed_at' => 'datetime',
+            'recovery_due_at' => 'datetime',
         ];
     }
 

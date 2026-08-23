@@ -11,6 +11,9 @@ use Illuminate\Support\Facades\Log;
 
 class WebSubController extends Controller
 {
+    /** Ceiling on an accepted lease (10 days); hubs grant far less in practice. */
+    protected const MAX_LEASE_SECONDS = 864000;
+
     /**
      * Hub verification challenge (GET). Echo hub.challenge and mark subscription active.
      */
@@ -29,13 +32,21 @@ class WebSubController extends Controller
             abort(400, 'Missing hub.challenge');
         }
 
-        if (is_string($mode) && $mode === 'unsubscribe') {
+        if (! is_string($mode) || $mode === '') {
+            abort(400, 'Missing hub.mode');
+        }
+
+        if ($mode === 'unsubscribe') {
             $subscription->forceFill([
                 'status' => WebSubSubscriptionStatus::Failed,
                 'last_verified_at' => now(),
             ])->save();
 
             return response($challenge, 200)->header('Content-Type', 'text/plain');
+        }
+
+        if ($mode !== 'subscribe') {
+            abort(400, 'Unsupported hub.mode');
         }
 
         if (is_string($topic) && $topic !== '' && $topic !== $subscription->topic_url) {
@@ -47,13 +58,17 @@ class WebSubController extends Controller
             abort(404);
         }
 
-        $lease = is_numeric($leaseSeconds) ? (int) $leaseSeconds : null;
+        // Clamp: a lease longer than the hub's own maximum would silence the renewal sweep.
+        $lease = is_numeric($leaseSeconds)
+            ? max(0, min((int) $leaseSeconds, self::MAX_LEASE_SECONDS))
+            : null;
 
         $subscription->forceFill([
             'status' => WebSubSubscriptionStatus::Active,
             'lease_seconds' => $lease,
             'expires_at' => $lease !== null ? now()->addSeconds($lease) : null,
             'last_verified_at' => now(),
+            'renewal_failures' => 0,
         ])->save();
 
         return response($challenge, 200)->header('Content-Type', 'text/plain');
@@ -84,11 +99,15 @@ class WebSubController extends Controller
         try {
             $fetcher->ingest($subscription->channel, $rawBody);
             $subscription->channel->forceFill(['last_fetched_at' => now()])->save();
+            $subscription->forceFill(['last_delivery_at' => now()])->save();
         } catch (\Throwable $e) {
             Log::warning('WebSub ingest failed', [
                 'subscription_id' => $subscription->id,
                 'error' => $e->getMessage(),
             ]);
+
+            // The upload in this payload is now missing: let the backstop re-poll for it.
+            $subscription->forceFill(['delivery_failed_at' => now()])->save();
 
             return response('Ingest failed', 500);
         }

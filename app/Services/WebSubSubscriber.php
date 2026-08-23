@@ -51,6 +51,32 @@ class WebSubSubscriber
         return $subscription->fresh();
     }
 
+    /**
+     * Re-subscribe an existing lease before it expires, reusing its token and secret.
+     *
+     * The lease only really extends once the hub re-verifies the callback, so a
+     * successful POST is recorded as an attempt, not as a renewal.
+     */
+    public function renew(ChannelSubscription $subscription): bool
+    {
+        $accepted = $this->postSubscribe($subscription);
+
+        if ($accepted) {
+            $subscription->forceFill([
+                'last_renewal_attempt_at' => now(),
+            ])->save();
+
+            return true;
+        }
+
+        $subscription->forceFill([
+            'last_renewal_attempt_at' => now(),
+            'renewal_failures' => $subscription->renewal_failures + 1,
+        ])->save();
+
+        return false;
+    }
+
     protected function backfill(Channel $channel): void
     {
         $result = $this->fetcher->fetchForChannels(collect([$channel]), force: true);
@@ -65,31 +91,54 @@ class WebSubSubscriber
 
     protected function requestSubscribe(ChannelSubscription $subscription): void
     {
+        if ($this->postSubscribe($subscription)) {
+            return;
+        }
+
+        $subscription->forceFill([
+            'status' => WebSubSubscriptionStatus::Failed,
+        ])->save();
+    }
+
+    /**
+     * POST a subscribe request to the hub. Returns whether the hub accepted it.
+     */
+    protected function postSubscribe(ChannelSubscription $subscription): bool
+    {
         $hubUrl = (string) config('services.websub.hub_url');
 
-        $response = Http::asForm()
-            ->timeout(10)
-            ->withHeaders([
-                'User-Agent' => (string) config('services.websub.user_agent'),
-            ])
-            ->post($hubUrl, [
-                'hub.mode' => 'subscribe',
-                'hub.topic' => $subscription->topic_url,
-                'hub.callback' => $subscription->callbackUrl(),
-                'hub.secret' => $subscription->secret,
-                'hub.verify' => 'async',
-            ]);
-
-        if (! $response->successful()) {
-            $subscription->forceFill([
-                'status' => WebSubSubscriptionStatus::Failed,
-            ])->save();
-
-            Log::warning('WebSub subscribe request failed', [
+        try {
+            $response = Http::asForm()
+                ->timeout(10)
+                ->withHeaders([
+                    'User-Agent' => (string) config('services.websub.user_agent'),
+                ])
+                ->post($hubUrl, [
+                    'hub.mode' => 'subscribe',
+                    'hub.topic' => $subscription->topic_url,
+                    'hub.callback' => $subscription->callbackUrl(),
+                    'hub.secret' => $subscription->secret,
+                    'hub.verify' => 'async',
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('WebSub subscribe request errored', [
                 'channel_id' => $subscription->channel_id,
-                'status' => $response->status(),
-                'body' => $response->body(),
+                'error' => $e->getMessage(),
             ]);
+
+            return false;
         }
+
+        if ($response->successful()) {
+            return true;
+        }
+
+        Log::warning('WebSub subscribe request failed', [
+            'channel_id' => $subscription->channel_id,
+            'status' => $response->status(),
+            'body' => $response->body(),
+        ]);
+
+        return false;
     }
 }
