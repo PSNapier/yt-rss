@@ -8,12 +8,16 @@ use App\Http\Controllers\FeedCapController;
 use App\Http\Controllers\GroupFeedController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\VideoStateController;
+use App\Http\Controllers\WebSubController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Features;
 
 Route::inertia('/', 'Welcome', [
     'canRegister' => Features::enabled(Features::registration()),
 ])->name('home');
+
+Route::get('websub/{token}', [WebSubController::class, 'verify'])->name('websub.verify');
+Route::post('websub/{token}', [WebSubController::class, 'receive'])->name('websub.receive');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('groups', [ChannelGroupController::class, 'index'])->name('groups.index');

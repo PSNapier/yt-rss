@@ -56,9 +56,12 @@ class RssFetcher
         $failed = 0;
 
         foreach ($stale->chunk($this->poolChunkSize) as $batch) {
+            $userAgent = (string) config('services.websub.user_agent');
+
             $responses = Http::pool(fn (Pool $pool) => $batch->map(
                 fn (Channel $c) => $pool
                     ->as((string) $c->id)
+                    ->withHeaders(['User-Agent' => $userAgent])
                     ->connectTimeout($this->connectTimeoutSeconds)
                     ->timeout($this->timeoutSeconds)
                     ->get($c->rssUrl())

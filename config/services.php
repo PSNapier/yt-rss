@@ -42,4 +42,14 @@ return [
         'rss_pool_chunk' => (int) env('RSS_POOL_CHUNK', 20),
     ],
 
+    'websub' => [
+        'hub_url' => env('WEBSUB_HUB_URL', 'https://pubsubhubbub.appspot.com/subscribe'),
+        /** Public HTTPS base for hub callbacks; falls back to APP_URL when null. */
+        'callback_base' => env('WEBSUB_CALLBACK_BASE'),
+        'user_agent' => env(
+            'WEBSUB_USER_AGENT',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        ),
+    ],
+
 ];

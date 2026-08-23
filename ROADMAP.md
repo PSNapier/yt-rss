@@ -450,45 +450,6 @@ Logged-in users stay authenticated for up to 90 days instead of the current defa
 
 ---
 
-## [021] WebSub push ingestion (MVP)
-
-**Status:** `todo`
-**Mode:** `Manual`
-**Depends On:** none
-
-### Goal
-
-Prove YouTube WebSub (PubSubHubbub) push end-to-end for real channels: subscribe on channel-add, verify the subscription, receive and signature-verify push payloads, and route them into the existing `ingest` upsert path. Backfill a channel's existing videos with one poll at add time. This replaces the synchronous per-channel polling that blocks first paint and does not scale (naive polling from one server IP draws 429s at ~1,500-2,000 channels; push moves the ceiling to ~100k+).
-
-### Scope
-
-- Public HTTPS **callback controller**: GET handles the hub verification challenge (echo `hub.challenge`); POST receives the Atom fragment, verifies the HMAC against the stored `hub.secret`, then upserts via `RssFetcher::ingest`
-- **Subscribe-on-add**: POST to `https://pubsubhubbub.appspot.com/subscribe` with `hub.mode=subscribe`, `hub.topic=<channel feed URL>`, `hub.callback`, and `hub.secret`
-- **Poll-on-add backfill**: one `RssFetcher` fetch when a channel is first subscribed (WebSub is forward-only and does not hand over existing videos). Both subscribe and backfill happen at add time
-- **Subscription-state migration**: a per-channel row storing topic URL, lease expiry, secret, and last-verified timestamp
-- Dispatch subscribe/backfill as **queued jobs** (first `app/Jobs`), reusing the `app/Console/Commands` pattern where a command fits
-
-### Technical Notes
-
-- Google's hub is free, needs no API key, and does **not** consume YouTube Data API quota
-- **Signature-verify every push before writing** — video rows are shared across users, so a forged payload could poison shared rows
-- **Prerequisite:** a running queue worker in production. None exists today (`QUEUE_CONNECTION=database`, no `app/Jobs`)
-- **Dependency:** the production HTTPS host + valid TLS the callback lives on. The whole design rests on this endpoint staying highly available (downtime = silently lost pushes); the hub is best-effort with no SLA
-- **Confirm empirically before relying on it:** initial verification timing, lease duration actually granted, and redelivery behavior on callback 5xx. This is why the entry is `Manual`
-- Set a **browser-like User-Agent** on the add-time poll; non-browser UAs get throttled harder
-- Keep the existing synchronous in-render fetch in place as a fallback during MVP; retiring it (Finding F1) is `[022]`
-- Reuses `RssFetcher::ingest` (`app/Services/RssFetcher.php`) as the push/poll write path. See `reference/FEED_PIPELINE_AUDIT.md` (Finding F1) for the pipeline this replaces
-- **Out of scope:** channel-ID acquisition for onboarding (Data API lookup, webview scrape, or extension) is orthogonal to push vs. poll and is tracked as a separate future task
-
-### Acceptance Criteria
-
-- [ ] Adding a channel subscribes it and backfills its ~15 existing videos via one poll
-- [ ] The hub verification challenge is answered and the subscription becomes active
-- [ ] A new upload arrives via push, its HMAC is verified, and it appears in the feed through `ingest`
-- [ ] A payload with an invalid signature is rejected and writes nothing
-
----
-
 ## [022] WebSub hardening: renewal, backstop, retire sync fetch
 
 **Status:** `todo`
