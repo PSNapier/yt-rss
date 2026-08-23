@@ -1,5 +1,51 @@
 # Roadmap Done
 
+## [027] Subscribe channels missing a WebSub subscription (`websub:subscribe-missing`)
+
+**Status:** `done`
+**Mode:** `Auto`
+**Depends On:** [021], [022]
+
+### Goal
+
+Close the gap where a channel exists in the database but has no `channel_subscriptions` row at all, so push never reaches it. A channel only ever gets subscribed at the moment it is added, which leaves any channel predating WebSub — or every channel in a database that was never the one the hub was pointed at — permanently push-less. Provide a manually run artisan sweep that subscribes and backfills those channels.
+
+### Scope
+
+- A new `websub:subscribe-missing` artisan command, run on demand, not scheduled
+- `--dry-run` to list candidates without touching RSS or the hub, and an optional `--limit` to pace a large first run
+- Aggregated alerting on subscribe failure, mirroring the existing renewal alert
+- Explicitly NOT in scope: rows that exist but are unhealthy (`failed`, or never verified). `websub:renew` already retries those, and a second command POSTing the same subscribe would double up on the hub
+- Explicitly NOT in scope: scheduling. This is a deploy-time and recovery tool, not ongoing bookkeeping
+
+### Technical Notes
+
+- The gap exists because `WebSubSubscriber::ensureSubscribed()` has exactly one caller, `SubscriptionController::store` (`SubscriptionController.php:101`). Nothing reaches a channel that is already in the table
+- `WebSubBackstopCommand::reasonToRepoll()` already returns `'no websub subscription'` for these channels, so their video data does stay fresh over RSS. What was missing was only the subscription itself, which is why the hole is invisible in the feed
+- The command reuses `ensureSubscribed()` rather than reimplementing subscribe logic, so it inherits the same backfill-then-subscribe ordering and idempotence. Re-running after a partial or interrupted run only picks up what is still missing
+- Each subscribe also backfills that channel over RSS, so a first run against a large database is slow. `--limit` exists to pace it; the default is no limit
+- `WebSubAlerter::subscribesFailed()` was added alongside the existing `renewalsFailed()`, same shape: one `Log::error` and one webhook POST per run, capped channel-id sample, ids sanitized before leaving the app
+- Primary use is a deploy to an environment whose database has no `callback_token` rows the hub knows about. Hub subscriptions are keyed on `(topic, callback URL)`, so a new environment on its own hostname starts with zero live subscriptions regardless of what the previous one had
+
+### Tests
+
+- [x] `tests/Feature/WebSubSubscribeMissingTest.php` — a channel with no subscription row is subscribed at the hub and backfilled, with topic, callback token, and secret populated
+- [x] `tests/Feature/WebSubSubscribeMissingTest.php` — a channel with an active subscription is left untouched and its `callback_token` is not rotated
+- [x] `tests/Feature/WebSubSubscribeMissingTest.php` — a `failed` subscription is also left alone, since `websub:renew` owns that retry
+- [x] `tests/Feature/WebSubSubscribeMissingTest.php` — `--limit` caps the run and warns that channels may remain; without it the run is unbounded
+- [x] `tests/Feature/WebSubSubscribeMissingTest.php` — `--dry-run` reports candidates and sends no HTTP requests at all
+- [x] `tests/Feature/WebSubSubscribeMissingTest.php` — a hub rejection marks the subscription `failed` and raises the aggregated alert
+
+### Acceptance Criteria
+
+- [x] Running the command subscribes and backfills every channel that has no subscription row
+- [x] Re-running it is a no-op and reports that every channel is already subscribed
+- [x] Existing subscriptions, healthy or failed, are never modified by the command
+- [x] `--dry-run` previews the candidate list without contacting the hub or YouTube
+- [x] The command is not registered on the scheduler; `schedule:list` shows only `websub:renew` and `websub:backstop`
+
+---
+
 ## [026] Stop the whole grid flashing when a video's state changes
 
 **Status:** `done`

@@ -1,6 +1,6 @@
 # Roadmap
 
-<!-- Next task number: [027] -->
+<!-- Next task number: [028] -->
 
 ## [006] Stop feed reverting to skeleton + scroll reset on tab return
 

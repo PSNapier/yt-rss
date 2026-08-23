@@ -42,6 +42,36 @@ class WebSubAlerter
         ));
     }
 
+    /**
+     * Report every failed first-time subscribe from one sweep as a single alert.
+     *
+     * @param  Collection<int, ChannelSubscription>  $failures
+     */
+    public function subscribesFailed(Collection $failures): void
+    {
+        if ($failures->isEmpty()) {
+            return;
+        }
+
+        $channelIds = $failures
+            ->map(fn (ChannelSubscription $s) => $this->safeChannelId($s))
+            ->all();
+
+        Log::error('WebSub subscribe failed', [
+            'failed_count' => $failures->count(),
+            'subscription_ids' => $failures->pluck('id')->all(),
+            'channel_ids' => array_slice($channelIds, 0, 25),
+        ]);
+
+        $sample = implode(', ', array_slice($channelIds, 0, 5));
+
+        $this->notify(sprintf(
+            'WebSub subscribe failed for %d channel(s). Sample channels: %s',
+            $failures->count(),
+            $sample,
+        ));
+    }
+
     protected function notify(string $message): void
     {
         $webhook = (string) config('services.websub.alert_webhook');
