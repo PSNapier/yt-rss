@@ -1,5 +1,121 @@
 # Roadmap Done
 
+## [026] Stop the whole grid flashing when a video's state changes
+
+**Status:** `done`
+**Mode:** `auto`
+**Depends On:** none
+
+### Goal
+
+Marking a video watched or unwatched updates that one card. It no longer blanks every card on the page to the loading skeleton for a frame, and no longer discards infinite-scroll progress.
+
+### Scope
+
+- Write video state over plain XHR instead of an Inertia visit
+- Return `204` from the state endpoint for XHR callers, keeping the redirect for normal form posts
+- Keep the cap-on refetch, but as a partial reload that leaves the current cards on screen
+
+### Technical Notes
+
+- Root cause: `VideoStateController::store` returned `back()`, so `router.post` performed a full Inertia visit. `videos` is an `Inertia::defer` prop, so the visit reset it to `undefined`, `<Deferred data="videos">` rendered its `FeedGridSkeleton` fallback for a frame, and the arriving payload then ran `applyItems`, replacing the array and dropping loaded pages. The flash was the deferred fallback, not a CSS transition
+- Fix: `resources/js/composables/useVideoState.ts` exposes `postVideoState(url, state)` — a `fetch` with `credentials: 'same-origin'` and an `X-XSRF-TOKEN` header read from the `XSRF-TOKEN` cookie. No Inertia visit, so no deferred prop reset. The UI already updated optimistically, so nothing needs to come back
+- `VideoStateController::store` now returns `response()->noContent()` when `$request->expectsJson()`, and still `back()` otherwise, so existing tests asserting a redirect stay valid
+- The cap-on branch still calls `router.reload({ only: ['videos'] })`. A partial reload keeps the previous prop value on screen until the response lands, so it does not re-trigger the fallback
+- Distinct from `[006]`, which covers the skeleton flash on navigation and browser-tab return. This item only covers the state-write trigger; `[006]` stays open
+
+### Acceptance Criteria
+
+- [x] Toggling watched/unwatched updates only that card, with no skeleton flash across the grid
+- [x] Infinite-scroll progress survives a state toggle
+- [x] The cap-on refetch still happens, without flashing the grid
+- [x] Non-XHR posts to the state route still redirect back
+
+### Tests
+
+- [x] `tests/Feature/VideoStateTest.php::an XHR state write returns 204 so the feed never re-renders`
+- [x] `tests/Feature/VideoStateTest.php::a non-XHR state write still redirects back`
+
+---
+
+## [025] Eye toggle on video cards for watched/unwatched
+
+**Status:** `done`
+**Mode:** `auto`
+**Depends On:** [024]
+
+### Goal
+
+Each video card carries an eye icon button in the top-left of the thumbnail that flips the video between watched and unwatched in place, without opening the video.
+
+### Scope
+
+- Add an icon button to the `VideoCard` thumbnail, mirroring the existing favorite star in the top-right
+- Emit a `toggle-watched` event and wire it to the existing `setState` in both feed pages
+- NOT in scope: the `hidden` state, which keeps its context-menu path
+
+### Technical Notes
+
+- Button lives in the thumbnail block in `resources/js/components/VideoCard.vue`, `absolute top-2 left-2 z-10`, opposite the `channel_is_favorite` star
+- `@click.prevent.stop` is required: the card root is now an anchor (`[024]`), so without both the toggle would also navigate to YouTube
+- Icon swaps on state: `EyeSlashIcon` when watched (click to unwatch), `EyeIcon` when unwatched. `aria-pressed`, `aria-label`, and `title` all reflect the current state
+- Visibility: hidden until card hover (`opacity-0 group-hover:opacity-100`), pinned visible when the video is watched so watched cards always expose the way back
+- New emit `toggle-watched`; `onToggleWatched` in `Feed.vue` / `Groups/Show.vue` calls the existing `setState(id, watched ? null : 'watched')`, so the null branch reuses the delete path already covered by `VideoStateTest`
+
+### Acceptance Criteria
+
+- [x] Every card shows an eye button in the thumbnail's top-left
+- [x] Clicking it toggles watched/unwatched without opening the video
+- [x] The button reflects state (eye vs eye-slash) and exposes an accessible label
+- [x] Watched cards keep the button visible; unwatched cards reveal it on hover
+- [x] Works on both the all-videos feed and group feeds
+
+### Tests
+
+- [x] `tests/Feature/VideoStateTest.php::user can mark a video watched`
+- [x] `tests/Feature/VideoStateTest.php::user can unmark watched (delete state) by sending null`
+
+---
+
+## [024] Whole video card is one link (native link context menu)
+
+**Status:** `done`
+**Mode:** `auto`
+**Depends On:** none
+
+### Goal
+
+Right-clicking anywhere on a video card offers link actions for the video ("Open link in new tab", "Copy link address") instead of image actions on the thumbnail, because the entire card is a real anchor to the YouTube URL rather than a `div` with a click handler.
+
+### Scope
+
+- Convert the `VideoCard` root element from `<div>` to `<a href>` targeting the YouTube watch URL
+- Make the thumbnail image ignore pointer events so the right-click target is the anchor, not the `<img>`
+- Remove the now-redundant `window.open` from both feed pages' `onCardClick`
+- Temporarily disable the custom right-click context menu so the native browser menu shows
+- NOT in scope: deleting the custom context menu or its markup — it stays behind a flag
+
+### Technical Notes
+
+- Root element is now `<a :href="videoUrl" target="_blank" rel="noopener">` in `resources/js/components/VideoCard.vue`; `videoUrl` is a computed `https://www.youtube.com/watch?v=${video.youtube_video_id}`
+- The thumbnail `<img>` carries `pointer-events-none`, so a right-click over the thumbnail resolves to the anchor and Chromium shows link actions rather than image actions
+- `onCardClick` in `resources/js/pages/Videos/Feed.vue` and `resources/js/pages/Groups/Show.vue` no longer calls `window.open` — the anchor navigates. It still marks the video watched
+- The custom menu is gated by a `CONTEXT_MENU_ENABLED = false` const in `VideoCard.vue`; the `@contextmenu` emit is guarded by it, so `openCtx` (which calls `preventDefault`) never fires and the native menu appears. Flip the const to `true` to restore the custom menu
+- Related: `[007]` (background tab on click) is unaffected and still open — `target="_blank"` opens a foreground tab, and no web API can request a background one
+
+### Acceptance Criteria
+
+- [x] Right-clicking a card's thumbnail shows link actions for the video, not image actions
+- [x] Left-clicking anywhere on the card opens the video in a new tab exactly once (no double-open)
+- [x] The card still marks itself watched on click
+- [x] The custom context menu is disabled by a single flag that can be flipped back on
+
+### Tests
+
+Verified by hand in the browser — this is DOM/right-click behaviour with no automated browser suite in the project (`tests/` has Feature and Unit only). The click path's server side is covered by the existing `tests/Feature/VideoStateTest.php`.
+
+---
+
 ## [022] WebSub hardening: renewal, backstop, retire sync fetch
 
 **Status:** `done`

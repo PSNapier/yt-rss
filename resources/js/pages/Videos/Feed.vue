@@ -5,6 +5,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import FeedGridSkeleton from '@/components/FeedGridSkeleton.vue';
 import VideoCard from '@/components/VideoCard.vue';
 import { getFeedCache, saveFeedCache } from '@/composables/useFeedCache';
+import { postVideoState } from '@/composables/useVideoState';
 import feed from '@/routes/feed';
 import videoRoutes from '@/routes/videos';
 
@@ -134,19 +135,16 @@ const setState = (
         }
     }
 
-    router.post(
-        videoRoutes.state.store(youtubeVideoId).url,
-        { state },
-        {
-            preserveScroll: true,
-            preserveState: true,
+    // Plain XHR, not an Inertia visit: `videos` is a deferred prop, so a visit
+    // would blank it and flash the whole grid back to the skeleton.
+    postVideoState(videoRoutes.state.store(youtubeVideoId).url, state).then(
+        () => {
             // With the cap on, a state change alters which unwatched video
-            // each channel surfaces, so refetch the capped feed.
-            onSuccess: () => {
-                if (capOn.value) {
-                    router.reload({ only: ['videos'] });
-                }
-            },
+            // each channel surfaces, so refetch the capped feed. A partial
+            // reload keeps the current videos on screen until it lands.
+            if (capOn.value) {
+                router.reload({ only: ['videos'] });
+            }
         },
     );
 };
@@ -165,16 +163,18 @@ const toggleCap = () => {
     );
 };
 
+// Eye toggle on the card: flip watched <-> unwatched without opening the video.
+const onToggleWatched = (video: Video) => {
+    setState(
+        video.youtube_video_id,
+        video.user_state === 'watched' ? null : 'watched',
+    );
+};
+
 const onCardClick = (video: Video) => {
     if (video.user_state !== 'watched') {
         setState(video.youtube_video_id, 'watched');
     }
-
-    window.open(
-        `https://www.youtube.com/watch?v=${video.youtube_video_id}`,
-        '_blank',
-        'noopener',
-    );
 };
 
 const sentinel = ref<HTMLElement | null>(null);
@@ -424,6 +424,7 @@ const buckets = computed(() => {
                                 :key="video.youtube_video_id"
                                 :video="video"
                                 @card-click="onCardClick"
+                                @toggle-watched="onToggleWatched"
                                 @context-menu="openCtx"
                             />
                         </div>

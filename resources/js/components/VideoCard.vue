@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
+import {
+    EyeIcon as EyeIconSolid,
+    EyeSlashIcon as EyeSlashIconSolid,
+    StarIcon as StarIconSolid,
+} from '@heroicons/vue/24/solid';
+import { computed } from 'vue';
 
 interface Channel {
     id: number;
@@ -18,17 +23,29 @@ interface Video {
     channel: Channel;
 }
 
-defineProps<{ video: Video }>();
+const props = defineProps<{ video: Video }>();
+
+const videoUrl = computed(
+    () => `https://www.youtube.com/watch?v=${props.video.youtube_video_id}`,
+);
 
 defineEmits<{
     (e: 'card-click', video: Video): void;
     (e: 'context-menu', event: MouseEvent, video: Video): void;
+    (e: 'toggle-watched', video: Video): void;
 }>();
+
+// Temporarily disabled: set back to true to restore the custom right-click menu
+// and let the native browser context menu go away again.
+const CONTEXT_MENU_ENABLED = false;
 </script>
 
 <template>
-    <div
-        class="group relative cursor-pointer overflow-hidden rounded-[5px] border-2 bg-card transition-opacity"
+    <a
+        :href="videoUrl"
+        target="_blank"
+        rel="noopener"
+        class="group relative block cursor-pointer overflow-hidden rounded-[5px] border-2 bg-card transition-opacity"
         :class="
             video.channel_is_favorite
                 ? video.user_state === 'watched'
@@ -39,7 +56,9 @@ defineEmits<{
                   : 'border-border hover:border-foreground/30'
         "
         @click="$emit('card-click', video)"
-        @contextmenu="$emit('context-menu', $event, video)"
+        @contextmenu="
+            CONTEXT_MENU_ENABLED && $emit('context-menu', $event, video)
+        "
     >
         <!-- Thumbnail -->
         <div class="relative aspect-video bg-muted">
@@ -47,9 +66,34 @@ defineEmits<{
                 v-if="video.thumbnail_url"
                 :src="video.thumbnail_url"
                 :alt="video.title"
-                class="h-full w-full object-cover"
+                class="pointer-events-none h-full w-full object-cover"
                 loading="lazy"
             />
+            <!-- Watched toggle — top left -->
+            <button
+                type="button"
+                class="absolute top-2 left-2 z-10 rounded-full bg-black/55 p-1.5 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/75 focus-visible:opacity-100"
+                :class="{ 'opacity-100': video.user_state === 'watched' }"
+                :title="
+                    video.user_state === 'watched'
+                        ? 'Mark as unwatched'
+                        : 'Mark as watched'
+                "
+                :aria-label="
+                    video.user_state === 'watched'
+                        ? 'Mark as unwatched'
+                        : 'Mark as watched'
+                "
+                :aria-pressed="video.user_state === 'watched'"
+                @click.prevent.stop="$emit('toggle-watched', video)"
+            >
+                <EyeSlashIconSolid
+                    v-if="video.user_state === 'watched'"
+                    class="size-4"
+                />
+                <EyeIconSolid v-else class="size-4" />
+            </button>
+
             <!-- Favorite star — top right -->
             <div
                 v-if="video.channel_is_favorite"
@@ -83,5 +127,5 @@ defineEmits<{
                 </span>
             </div>
         </div>
-    </div>
+    </a>
 </template>
