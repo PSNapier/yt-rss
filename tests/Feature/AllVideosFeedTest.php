@@ -51,7 +51,7 @@ test('all videos feed defers videos and skips the RSS fetch on the initial shell
     expect($rssRequests)->toHaveCount(0);
 });
 
-test('all videos feed auto-fetches stale channels on load', function () {
+test('resolving the deferred videos prop performs no network I/O, even for never-fetched channels', function () {
     Http::fake(['*' => Http::response('<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>', 200)]);
 
     $user = User::factory()->create();
@@ -61,17 +61,16 @@ test('all videos feed auto-fetches stale channels on load', function () {
 
     $this->actingAs($user)->get(route('feed.index'), inertiaPartial('Videos/Feed'))->assertOk();
 
-    $rssRequests = collect(Http::recorded())
-        ->filter(fn ($pair) => str_contains($pair[0]->url(), 'youtube.com'));
+    Http::assertNothingSent();
 
-    expect($rssRequests)->toHaveCount(1);
+    // Ingestion is push-driven; a feed render must not touch the channel's poll state.
     $this->assertDatabaseHas('channels', [
         'id' => $channel->id,
-        'last_fetched_at' => now()->toDateTimeString(),
+        'last_fetched_at' => null,
     ]);
 });
 
-test('all videos feed skips fetch for recently fetched channels', function () {
+test('all videos feed sends no RSS requests for recently fetched channels', function () {
     Http::fake(['*' => Http::response('<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>', 200)]);
 
     $user = User::factory()->create();
@@ -97,10 +96,13 @@ test('all videos feed deduplicates channels shared across groups', function () {
     $group1->channels()->attach($channel);
     $group2->channels()->attach($channel);
 
-    $this->actingAs($user)->get(route('feed.index'), inertiaPartial('Videos/Feed'))->assertOk();
+    Video::factory()->create(['channel_id' => $channel->id]);
 
-    $rssRequests = collect(Http::recorded())
-        ->filter(fn ($pair) => str_contains($pair[0]->url(), 'youtube.com'));
+    $response = $this->actingAs($user)
+        ->get(route('feed.index'), inertiaPartial('Videos/Feed'))
+        ->assertOk();
 
-    expect($rssRequests)->toHaveCount(1);
+    // A channel in two groups must contribute its videos once, not twice.
+    expect($response->json('props.videos.data'))->toHaveCount(1);
+    Http::assertNothingSent();
 });

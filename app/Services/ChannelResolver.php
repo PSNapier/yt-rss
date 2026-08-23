@@ -111,20 +111,20 @@ class ChannelResolver
     public function lookupChannelNameFromRss(string $channelId): ?string
     {
         try {
-            $ctx = stream_context_create([
-                'http' => [
-                    'header' => 'User-Agent: Mozilla/5.0 (compatible; RSS reader)',
-                    'timeout' => 10,
-                ],
-                'ssl' => [
-                    'verify_peer' => true,
-                    'verify_peer_name' => true,
-                ],
-            ]);
+            $response = Http::timeout(10)
+                ->withHeaders([
+                    'User-Agent' => (string) config('services.websub.user_agent'),
+                    'Accept-Encoding' => 'gzip, deflate',
+                ])
+                ->get($this->rssUrl($channelId));
 
-            $xml = @file_get_contents($this->rssUrl($channelId), false, $ctx);
+            if (! $response->successful()) {
+                return null;
+            }
 
-            if ($xml === false || $xml === '') {
+            $xml = $response->body();
+
+            if ($xml === '') {
                 return null;
             }
 

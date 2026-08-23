@@ -12,7 +12,7 @@ use Inertia\Response;
 
 class GroupFeedController extends Controller
 {
-    public function show(Request $request, ChannelGroup $group, RssFetcher $fetcher): Response
+    public function show(Request $request, ChannelGroup $group): Response
     {
         $this->authorize('view', $group);
 
@@ -23,12 +23,8 @@ class GroupFeedController extends Controller
         return Inertia::render('Groups/Show', [
             'group' => $group->only(['id', 'name', 'icon']),
             'capEnabled' => $capEnabled,
-            'videos' => Inertia::defer(function () use ($request, $fetcher, $group, $userId, $capEnabled) {
-                // Only refresh RSS on the first (cursorless) load, not on every paginate.
-                if (! $request->filled('cursor')) {
-                    $fetcher->fetchForGroup($group);
-                }
-
+            'videos' => Inertia::defer(function () use ($group, $userId, $capEnabled) {
+                // Pure DB read: ingestion is push-driven (WebSub) plus the scheduled poll paths.
                 return Video::query()
                     ->select([
                         'videos.id',

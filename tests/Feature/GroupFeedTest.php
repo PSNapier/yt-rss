@@ -145,7 +145,7 @@ test('group feed defers videos and skips the RSS fetch on the initial shell rend
     expect($rssRequests)->toHaveCount(0);
 });
 
-test('visiting feed auto-fetches stale channels', function () {
+test('resolving the deferred videos prop performs no network I/O, even for never-fetched channels', function () {
     Http::fake(['*' => Http::response('<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>', 200)]);
 
     $user = User::factory()->create();
@@ -155,17 +155,16 @@ test('visiting feed auto-fetches stale channels', function () {
 
     $this->actingAs($user)->get(route('groups.show', $group), inertiaPartial('Groups/Show'))->assertOk();
 
-    $rssRequests = collect(Http::recorded())
-        ->filter(fn ($pair) => str_contains($pair[0]->url(), 'youtube.com'));
+    Http::assertNothingSent();
 
-    expect($rssRequests)->toHaveCount(1);
+    // Ingestion is push-driven; a feed render must not touch the channel's poll state.
     $this->assertDatabaseHas('channels', [
         'id' => $channel->id,
-        'last_fetched_at' => now()->toDateTimeString(),
+        'last_fetched_at' => null,
     ]);
 });
 
-test('visiting feed skips fetch for recently fetched channels', function () {
+test('visiting feed sends no RSS requests for recently fetched channels', function () {
     Http::fake(['*' => Http::response('<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>', 200)]);
 
     $user = User::factory()->create();

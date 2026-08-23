@@ -74,3 +74,25 @@ test('state writes are scoped to authenticated user (cannot affect others)', fun
         'user_id' => $bob->id,
     ]);
 });
+
+test('an XHR state write returns 204 so the feed never re-renders', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->postJson(route('videos.state.store', 'vid000'), ['state' => 'watched'])
+        ->assertNoContent();
+
+    $this->assertDatabaseHas('user_video_states', [
+        'user_id' => $user->id,
+        'youtube_video_id' => 'vid000',
+        'state' => 'watched',
+    ]);
+});
+
+test('a non-XHR state write still redirects back', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->post(route('videos.state.store', 'vid000'), ['state' => null])
+        ->assertRedirect();
+});
