@@ -42,6 +42,23 @@ return [
         'rss_pool_chunk' => (int) env('RSS_POOL_CHUNK', 20),
     ],
 
+    'polling' => [
+        /** Safety cap on channels polled per sweep; a no-op at current scale, and a signal that sharding is due if ever hit. */
+        'max_per_sweep' => (int) env('POLL_MAX_PER_SWEEP', 1000),
+        /** Share of a sweep's requests that must look blocked before polling pauses. */
+        'block_failure_ratio' => (float) env('POLL_BLOCK_FAILURE_RATIO', 0.5),
+        /** Below this many requests a sweep is too small for the ratio to mean anything. */
+        'block_min_sample' => (int) env('POLL_BLOCK_MIN_SAMPLE', 5),
+        /** How long polling pauses after a block is detected (YouTube blocks last hours to about a day). */
+        'cooldown_hours' => (int) env('POLL_COOLDOWN_HOURS', 6),
+        /** Window the health report aggregates sweep failures and block signals over. */
+        'health_window_hours' => (int) env('POLL_HEALTH_WINDOW_HOURS', 24),
+        /** How long sweep history is kept for the health report. */
+        'sweep_history_days' => (int) env('POLL_SWEEP_HISTORY_DAYS', 30),
+        /** Webhook posted to when a cooldown starts; null disables webhook alerting (logs still fire). */
+        'alert_webhook' => env('POLL_ALERT_WEBHOOK'),
+    ],
+
     'websub' => [
         'hub_url' => env('WEBSUB_HUB_URL', 'https://pubsubhubbub.appspot.com/subscribe'),
         /** Public HTTPS base for hub callbacks; falls back to APP_URL when null. */

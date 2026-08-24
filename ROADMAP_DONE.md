@@ -1,5 +1,130 @@
 # Roadmap Done
 
+## [029] Make scheduled polling the ingestion backbone
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+Videos arrive on a predictable schedule driven entirely by our own polling, and the health of that polling is a reportable state rather than a tinker session. [028] proved YouTube's publisher does not reliably ping its own hub for our feeds, so push cannot be the guaranteed path. This item builds the path that can be guaranteed. [030] then removes WebSub, and depends on this landing first.
+
+### Scope
+
+- A scheduled sweep every 30 minutes that polls **every** channel, as the sole automatic ingestion path
+- Block detection and a cooldown, since a YouTube RSS block does not announce itself as a 429
+- A poll health command, so staleness and fetch failures are visible without a tinker session
+- The `channels.rss_url` deviation check carried over from [028]
+- **Not in scope:** removing any WebSub code. That is [030], and it must land after this
+- **Not in scope:** anything that scales polling past one server IP. That is [031], deliberately deferred
+
+### Technical Notes
+
+**Ingestion is push-only today.** `RssFetcher::fetchForChannels` is reached only from the failure-driven backstop and the manual group refresh. The backstop is gated behind `backstop_min_silence_hours` (48) and `backstop_min_repoll_hours` (6), and every failure signal read healthy during the [028] outage, so it was a no-op while ~95% of uploads went missing. Feed reads are pure DB (`AllVideosFeedController.php:27`, `GroupFeedController.php:27`), so nothing else fetches.
+
+**Poll everything, every 30 minutes.** Add a `channels:poll` command scheduled on `->everyThirtyMinutes()` that polls the full channel table in one sweep. At the current 193 channels that is 386 requests/hour, roughly 9,300/day, and a uniform 30-minute upload-to-feed latency on every channel.
+
+This is deliberately the simple scheme. A rotation budget, stalest-first selection, and demand-ordered polling were all considered and rejected **for now** as complexity that buys nothing at 193 channels. They buy a great deal at 10,000, which is why they are written up in [031] rather than discarded. The crossover is roughly the point where a full sweep stops fitting inside the safe request rate for a single IP, and that rate is unknown (see below).
+
+**Keep a safety cap.** Take a `POLL_MAX_PER_SWEEP` env value, defaulting high enough to be a no-op at current scale (say 1,000). It is not a rotation mechanism and needs no stalest-first selection. It exists so a bulk channel import cannot silently multiply the outbound request rate overnight. A sweep hitting the cap is the signal to build [031].
+
+**The sweep passes `force: true`.** `RssFetcher` filters by its 30-minute TTL (`isStale`). A sweep scheduled at exactly 30 minutes will drift and find channels at 29-point-something minutes old, silently skipping them until the following sweep and so doubling their real interval to an hour. `force: true` makes the schedule the only interval control.
+
+**Block detection is not optional.** `reference/YOUTUBE_RSS_RATE_LIMITS.md` section 5.2 records that a YouTube RSS block does **not** arrive as a 429. Across every documented case it is an HTTP 403, or an HTTP 200 whose body is Google's "automated queries" HTML interstitial rather than Atom XML. A health metric counting only 429s would have read zero through all of them. `RssFetcher` should treat each of these as a block signal:
+
+| Signal | Meaning |
+| --- | --- |
+| HTTP 403 | IP-scoped soft block |
+| HTTP 429 | Rate limit, rarely seen in practice |
+| HTTP 200, body is not valid Atom | The interstitial |
+| Sweep-wide failure ratio spike | The most reliable tell: blocks are all-or-nothing, not gradual |
+
+On detection, record it and **pause polling for a cooldown** rather than continuing. Blocks are IP-scoped and last hours to about a day. Retrying through one wastes requests and may extend it.
+
+**Conditional GET does not buy ceiling headroom.** `RssFetcher::pollHeaders` sends `If-None-Match` / `If-Modified-Since` and 304s are handled at `RssFetcher.php:76-88`, so most of a sweep transfers no body. That saves bandwidth and parse time. It does **not** reduce the request count, which is what an IP-scoped block counts. Do not read the 304 rate as safety margin.
+
+**Poll health command.** Nothing currently surfaces whether the sweep is keeping up. Add a command reporting max and median channel staleness (`now() - last_fetched_at`), fetch failure counts, and block-signal counts over a recent window. This is what makes the acceptance criteria checkable, and it replaces the drought-detection role that WebSub's `alert_webhook` never filled (it fires only on renewal failure, which stayed at 0 throughout the [028] outage).
+
+**`rss_url` deviation.** Fold into the health command: surface any channel whose stored `channels.rss_url` differs from the canonical form built from `channel_id`. Currently 0 of 193 deviate, but `Channel::rssUrl()` prefers the stored column, so a legacy odd row silently breaks that channel's polling the same way it broke its push topic in [028].
+
+**Keep `GroupFeedController::refresh`.** The manual force-refresh route stays as the escape hatch when a channel is mid-interval.
+
+### What landed
+
+| Piece | Where |
+| --- | --- |
+| Sweep command | `app/Console/Commands/PollChannelsCommand.php`, scheduled in `routes/console.php` |
+| Block signals | `RssFetcher::blockSignal()` / `looksLikeAtom()`, surfaced as a new `blocked` key in the result array |
+| Cooldown | `app/Services/PollCooldown.php`, a cache-backed deadline with an optional `POLL_ALERT_WEBHOOK` |
+| Sweep history | `poll_sweeps` table and `App\Models\PollSweep`, pruned to `POLL_SWEEP_HISTORY_DAYS` (30) by each sweep |
+| Health report | `app/Console/Commands/PollHealthCommand.php` (`poll:health`) |
+| Config | `services.polling.*`, documented in `.env.example` |
+
+### Decisions taken during the adversarial pass
+
+**Stalest-first ordering, even though the cap is not a rotation mechanism.** The sweep orders never-fetched channels first, then oldest `last_fetched_at`. A plain `orderBy('id')` would mean that if the cap is ever hit, the same lowest-id channels are polled forever and everything past the cap is never polled again: a silent permanent blackout rather than a delay. Ordering costs nothing and degrades the cap into slower whole-table coverage instead. It is still not a rotation budget; [031] owns that.
+
+**The cooldown gates the WebSub backstop too, not just the sweep.** A block is IP-scoped, so it applies to every automatic fetch path. `websub:backstop` now returns early while a cooldown is active. `GroupFeedController::refresh` and the on-add backfill are deliberately not gated: both are human-initiated, bounded to one group or one channel, and the refresh route is the documented escape hatch.
+
+**The `blocked` count is propagated to every existing caller.** `GroupFeedController::refresh` previously read only `failed`, so a group whose channels all came back 403 would have shown a green "Refreshed 0 channels (failed: 0)" toast.
+
+**Accepted, not fixed:**
+
+- The cooldown trips on a high sweep-wide failure ratio even when zero responses carried a block signal, so an unrelated egress or DNS incident can pause ingestion for `POLL_COOLDOWN_HOURS`. This is the acceptance criterion as written, and pausing is the safe direction: the alternative is hammering an origin during an incident the process cannot characterise from the inside.
+- `RssFetcher::ingest()` runs one `Video::updateOrCreate` per feed entry, so a clean sweep is roughly 15 round trips per channel. Fine at 193 channels; a bulk upsert belongs with the rest of the scaling work in [031].
+- `withoutOverlapping(29)` expires the schedule mutex just under the 30-minute cadence, so a sweep running longer than 29 minutes could stack with the next tick. At 193 channels a sweep is ten sequential pool batches, nowhere near that.
+- `poll:health` pulls every `last_fetched_at` into PHP to compute the median and scans the whole channel table for `rss_url` deviations. Linear in channel count, run by hand, not on a schedule.
+
+```mermaid
+flowchart TD
+    A[Schedule: every 30 min] --> B{Cooldown active?}
+    B -->|yes| Z[Skip sweep]
+    B -->|no| C[Select all channels, capped at POLL_MAX_PER_SWEEP]
+    C --> D[Pooled conditional GET, force: true]
+    D --> E{Response}
+    E -->|304| F[Touch last_fetched_at]
+    E -->|200 Atom| G[Ingest, touch validators]
+    E -->|403 / 429 / 200 non-Atom| H[Record block signal]
+    H --> I{Failure ratio over threshold?}
+    I -->|yes| J[Enter cooldown, alert]
+    I -->|no| K[Log, continue]
+```
+
+### Tests
+
+Cover the mechanically testable parts only:
+
+- [x] `tests/Feature/ChannelsPollCommandTest::it_polls_every_channel_in_one_sweep`
+- [x] `tests/Feature/ChannelsPollCommandTest::it_forces_past_the_ttl_so_a_recently_fetched_channel_is_not_skipped`
+- [x] `tests/Feature/ChannelsPollCommandTest::it_caps_a_sweep_at_the_configured_maximum`
+- [x] `tests/Feature/ChannelsPollCommandTest::it_polls_everything_when_the_channel_count_is_under_the_cap`
+- [x] `tests/Feature/RssBlockDetectionTest::it_counts_a_403_as_a_block_signal`
+- [x] `tests/Feature/RssBlockDetectionTest::it_counts_a_200_with_a_non_atom_body_as_a_block_signal`
+- [x] `tests/Feature/RssBlockDetectionTest::it_enters_cooldown_when_the_sweep_failure_ratio_crosses_the_threshold`
+- [x] `tests/Feature/RssBlockDetectionTest::it_skips_the_sweep_while_cooldown_is_active`
+- [x] `tests/Feature/PollHealthCommandTest::it_reports_an_rss_url_deviation`
+- [x] `tests/Feature/PollHealthCommandTest::it_reports_no_deviation_when_every_rss_url_is_canonical`
+
+Added during the adversarial pass:
+
+- [x] `tests/Feature/RssBlockDetectionTest::it_skips_the_websub_backstop_while_cooldown_is_active`
+- [x] `tests/Feature/RssBlockDetectionTest::a_sweep_that_only_fails_without_block_signals_still_enters_cooldown`
+
+**Not covered by tests, verified on production instead.** The block threshold is YouTube's, unpublished, and observable only in production. A faked client proves the code issues N requests, not that N is safe. [028] was invisible precisely because every in-process signal read healthy, so a suite mocking the RSS endpoint would have stayed green through all 20 hours of it. The real safety of 386 requests/hour, and end-to-end upload latency, are verified by running the sweep on production for a full day.
+
+### Acceptance Criteria
+
+- [x] A scheduled `channels:poll` runs every 30 minutes and polls every channel in the table
+- [x] The sweep passes `force: true`, so the schedule is the only interval control and TTL drift never skips a channel
+- [x] A `POLL_MAX_PER_SWEEP` safety cap exists, defaults high enough to be a no-op at current scale, and is logged loudly if ever hit
+- [x] `RssFetcher` counts HTTP 403, HTTP 429, and a non-Atom HTTP 200 body as block signals rather than as ordinary failures
+- [x] A sweep-wide failure ratio over the threshold triggers a cooldown that pauses polling instead of retrying
+- [x] One health command reports max and median channel staleness, fetch failure counts, and block-signal counts
+- [x] That command surfaces any channel whose stored `channels.rss_url` deviates from the canonical `channel_id` form
+- [x] The manual `GroupFeedController::refresh` route still force-fetches a group
+
+---
+
 ## [028] Diagnose the WebSub delivery drought
 
 **Status:** `done`

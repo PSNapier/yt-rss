@@ -1,11 +1,10 @@
 # Roadmap
 
-<!-- Next task number: [030] -->
+<!-- Next task number: [032] -->
 
 ## [006] Stop feed reverting to skeleton + scroll reset on tab return
 
 **Status:** `todo`
-**Mode:** `auto`
 **Depends On:** none
 
 ### Goal
@@ -39,7 +38,6 @@ Returning to a feed shows the already-loaded cards immediately, keeping scroll p
 ## [007] Open watched video in a background tab (Brave)
 
 **Status:** `todo`
-**Mode:** `auto`
 **Depends On:** none
 
 ### Goal
@@ -68,7 +66,6 @@ Clicking a video card opens the YouTube tab in the background so focus stays on 
 ## [008] Persist show/hide-watched state across feeds
 
 **Status:** `todo`
-**Mode:** `auto`
 **Depends On:** none
 
 ### Goal
@@ -98,7 +95,6 @@ The show-watched / hide-watched toggle keeps its setting when moving between gro
 ## [009] Unify sidebar button highlighting (Cherry accent border)
 
 **Status:** `todo`
-**Mode:** `auto`
 **Depends On:** none
 
 ### Goal
@@ -128,7 +124,6 @@ Both sidebar sections (main nav and group feeds) use the same active-state highl
 ## [010] Guarantee first 15 videos without Load more
 
 **Status:** `todo`
-**Mode:** `auto`
 **Depends On:** [006]
 
 ### Goal
@@ -159,7 +154,6 @@ Each feed shows at least 15 videos on first load regardless of how they fall acr
 ## [011] Fold group management into Subscriptions, remove Groups page
 
 **Status:** `todo`
-**Mode:** `Manual`
 **Depends On:** none
 
 ### Goal
@@ -191,7 +185,6 @@ Group create / rename / delete / management lives inside the Subscriptions page,
 ## [012] Replace subscription card Remove text with trash icon
 
 **Status:** `todo`
-**Mode:** `auto`
 **Depends On:** none
 
 ### Goal
@@ -219,7 +212,6 @@ The per-subscription Remove control is a trash-can icon button instead of the wo
 ## [013] Always show the channel ID input in Add form
 
 **Status:** `todo`
-**Mode:** `auto`
 **Depends On:** none
 
 ### Goal
@@ -247,7 +239,6 @@ The "Add by channel ID" input is always visible in the Add-to-groups section, no
 ## [014] Single/multi group-select toggle in Add form
 
 **Status:** `todo`
-**Mode:** `auto`
 **Depends On:** none
 
 ### Goal
@@ -276,7 +267,6 @@ An icon-button toggle beside "Add to groups" switches between multi-select (curr
 ## [015] Swap TikTok hero icon for a film camera icon
 
 **Status:** `todo`
-**Mode:** `auto`
 **Depends On:** none
 
 ### Goal
@@ -303,7 +293,6 @@ The All Videos feed hero shows a film/video camera icon instead of the TikTok no
 ## [016] Edit group icon from group management
 
 **Status:** `todo`
-**Mode:** `Manual`
 **Depends On:** [011]
 
 ### Goal
@@ -334,7 +323,6 @@ A group's icon can be changed from the group-management section, choosing from t
 ## [017] Group color: sidebar icon + feed hero background
 
 **Status:** `todo`
-**Mode:** `Manual`
 **Depends On:** [016]
 
 ### Goal
@@ -366,7 +354,6 @@ Each group can be assigned a color that drives its sidebar icon color and the fe
 ## [018] Show publish date on video cards
 
 **Status:** `todo`
-**Mode:** `auto`
 **Depends On:** none
 
 ### Goal
@@ -395,7 +382,6 @@ Each video card shows its publish date floated to the right of the channel row, 
 ## [019] Starred-only toggle on feeds (persisted)
 
 **Status:** `todo`
-**Mode:** `auto`
 **Depends On:** none
 
 ### Goal
@@ -425,7 +411,6 @@ A "show favorited only" toggle on the feed pages filters cards to favorited chan
 ## [020] Keep users logged in for 90 days
 
 **Status:** `todo`
-**Mode:** `auto`
 **Depends On:** none
 
 ### Goal
@@ -453,7 +438,6 @@ Logged-in users stay authenticated for up to 90 days instead of the current defa
 ## [023] Add channels by URL or @handle (YouTube Data API, quota-capped)
 
 **Status:** `todo`
-**Mode:** `Manual`
 **Depends On:** none
 
 ### Goal
@@ -491,71 +475,151 @@ Let a user add a channel by pasting a YouTube channel URL or an @handle, not onl
 
 ---
 
-## [029] Make polling the backbone, demote WebSub to accelerator
+## [030] Remove WebSub entirely
 
 **Status:** `todo`
-**Mode:** `Manual`
-**Depends On:** [028]
+**Depends On:** [029]
 
 ### Goal
 
-Videos keep arriving on a predictable schedule whether or not Google's hub delivers anything, and a delivery drought becomes visible instead of silent. [028] proved YouTube's publisher does not reliably ping its own hub for our feeds, so push is unreliable by nature and nothing on our side can fix it. This item makes polling the guaranteed path and leaves WebSub in place as a free accelerator for the cases where it does fire.
+WebSub is gone from the codebase. [028] proved YouTube's publisher does not reliably ping its own hub for our feeds: 191 of 193 subscriptions had never delivered, and nothing on our side can fix that. Once [029] makes polling the guaranteed path, every line of WebSub code is vestigial, and vestigial code is a standing invitation to debug a system that was never going to work.
+
+**Must land after [029].** Feed reads are pure DB, and the only scheduled ingestion today is `websub:renew` / `websub:backstop` (`routes/console.php:23-31`). Removing WebSub before the poll sweep exists leaves zero automatic ingestion.
 
 ### Scope
 
-- An hourly stalest-first poll budget, so a push outage costs hours of staleness rather than everything
-- A drought signal, so "push is dead" is a reportable state rather than a tinker session
-- The `Pending` backstop coverage hole from [028]
-- The `channels.rss_url` deviation check from [028]
-- **Not in scope:** any change to the subscribe or receive path. [028] proved both correct
+- Delete the WebSub controller, services, model, enum, commands, factory, and tests
+- Delete the routes, scheduler entries, config block, and env keys
+- Drop the `channel_subscriptions` table via a new forward migration
+- Remove subscribe-on-add from the subscription flow
+- Keep the [028] investigation writeup as the record of why
 
 ### Technical Notes
 
-**Keep WebSub, demote it.** No change to the subscribe or receive path. `ChannelSubscription::callbackUrl()` derives the URL from `services.websub.callback_base` (currently null, falling back to `APP_URL` = `https://peristalsis.tv`) at call time rather than storing it, so a later host change is picked up by the next renewal automatically.
+**Reference commit.** `eeee0c4` (`feat: WebSub push ingestion (MVP), archive [021]`) is the first WebSub commit; `c6a1666` is the last commit before it. If push is ever revisited, diff against those rather than resurrecting dead code. Everything worth keeping from the WebSub era, the conditional-GET columns and the pure-DB feed reads, stays.
 
-**Poll floor: a fixed hourly budget, stalest-first.** Ingestion is push-only today. `RssFetcher::fetchForChannels` is reached only from the backstop, and the backstop is failure-driven, gated behind `backstop_min_silence_hours` (48) and `backstop_min_repoll_hours` (6). Every failure signal read healthy during the [028] outage, so the backstop was a no-op while ~95% of uploads went missing.
+**Code to delete:**
 
-Add a scheduled sweep polling the **N most-stale channels each hour** by `last_fetched_at`, N being a configured budget. Deliberately a budget, **not** "poll everything older than X hours": a budget makes the outbound request rate a constant you set, independent of channel count, while a staleness threshold grows linearly with channel count and walks straight back into the 429 ceiling [021] was built to escape. Freshness degrades gracefully instead of the request rate exploding. At a 200/hour budget:
+| Path | Note |
+| --- | --- |
+| `app/Http/Controllers/WebSubController.php` | Hub verification + delivery callback |
+| `app/Services/WebSubSubscriber.php` | |
+| `app/Services/WebSubAlerter.php` | Renewal-failure webhook, fired 0 times during the outage |
+| `app/Models/ChannelSubscription.php` | |
+| `app/Enums/WebSubSubscriptionStatus.php` | |
+| `app/Console/Commands/RenewWebSubLeasesCommand.php` | |
+| `app/Console/Commands/WebSubBackstopCommand.php` | Redundant once the sweep covers every channel on rotation |
+| `app/Console/Commands/SubscribeMissingWebSubCommand.php` | Shipped in [027] |
+| `database/factories/ChannelSubscriptionFactory.php` | |
+| `tests/Feature/WebSubCallbackTest.php` | |
+| `tests/Feature/WebSubRenewalTest.php` | |
+| `tests/Feature/WebSubBackstopTest.php` | |
+| `tests/Feature/WebSubSubscribeOnAddTest.php` | |
+| `tests/Feature/WebSubSubscribeMissingTest.php` | |
+| `WEBSUB_LOCAL_SETUP.md` | Local tunnel setup notes |
 
-| Channels | Refresh interval | Requests/day |
-| --- | --- | --- |
-| 193 (today) | ~1 hour | ~4,600 |
-| 1,000 | ~5 hours | ~4,600 |
-| 2,000 | ~10 hours | ~4,600 |
-| 10,000 | ~2 days | ~4,600 |
+**Wiring to unpick:** the callback routes in `routes/web.php` and their CSRF exemption in `bootstrap/app.php`; both `Schedule::command('websub:…')` entries in `routes/console.php`; the `websub` block in `config/services.php` (`callback_base`, `alert_webhook`, `backstop_min_silence_hours`, `backstop_min_repoll_hours`, lease and renewal settings) and the matching `.env.example` keys; subscribe-on-add in `SubscriptionController`; WebSub references in `ChannelResolver`, `Channel`, and the "push-driven (WebSub)" comments in the two feed controllers.
 
-For scale: [021] put the 429 threshold at naive polling of ~1,500-2,000 channels, roughly 96,000 requests/day on the old 30-minute TTL. A fixed 4,600/day is about 5% of that. Conditional GET is already implemented (`RssFetcher::pollHeaders` sends `If-None-Match` / `If-Modified-Since`, 304s handled at `RssFetcher.php:76-88`), so most of the budget returns 304 with no body transferred.
+**Database.** Add a new forward migration dropping `channel_subscriptions`. Do **not** delete `2026_07_24_000811_create_channel_subscriptions_table.php` or the two later `add_*_to_channel_subscriptions` migrations: rewriting migration history breaks `migrate` against the existing production database. The `channels` conditional-GET migration (`2026_08_23_171925_add_conditional_get_to_channels_table.php`) stays, since [029] depends on it.
 
-**Drought detection.** Nothing surfaces "push is dead" as a state. `services.websub.alert_webhook` fires only on renewal failure, which stayed at 0 throughout the outage. Add a `websub:health` command (or extend the backstop) reporting counts by status, oldest and newest `last_delivery_at`, and the never-delivered count, warning loudly when install-wide deliveries flatline over N hours. Current production is a live known-bad fixture to build against: 191 of 193 have never delivered.
+**Keep `reference/WEBSUB_DELIVERY_INVESTIGATION.md`.** It is the evidence for the decision, and the reason nobody should try this again without new information from Google.
 
-**Backstop coverage hole.** Add a rule to `WebSubBackstopCommand::reasonToRepoll` treating a subscription `Pending` beyond a small multiple of `renew_retry_hours` as a re-poll candidate. Today it falls through both `leaseHasLapsed` (short-circuits on `status !== Active`) and `silenceAnomaly` (needs 3 uploads plus 48 hours of silence).
+### Tests
 
-**`rss_url` deviation.** Surface any channel whose stored `channels.rss_url` differs from the canonical form built from `channel_id`. Currently 0 of 193 deviate, but `Channel::rssUrl()` prefers the stored column, so a legacy odd row reproduces the [028] signature exactly and invisibly. Folding the check into the health command is the cheap option.
+The five `WebSub*Test.php` files are deleted, not rewritten. Verification is that the remaining suite passes and ingestion still works:
 
-**Manual** because the budget has to be tuned against live 429 behaviour and verified over a full day of production traffic.
-
-### Verification (no automated tests)
-
-This item ships no `### Tests` section, deliberately. Every open criterion is a claim about live third-party behaviour over time, and a Pest test can only assert against a fake of that behaviour, which is exactly the thing [028] proved we cannot model. The outage was invisible precisely because every in-process signal read healthy: a suite mocking the hub and the RSS endpoint would have stayed green through all 20 hours of it.
-
-| Criterion type | Why a test cannot carry it | How it is verified instead |
-| --- | --- | --- |
-| Poll budget holds under real load | The 429 ceiling is YouTube's, unpublished, observed only in production; a faked client proves the code issues N requests, not that N is safe | Run the sweep on production, watch failure counts and response codes across a full day |
-| No channel exceeds the refresh interval | Depends on real timing across hours of scheduler ticks | Query `max(now() - last_fetched_at)` across all channels after a day of sweeps |
-| Drought detection warns correctly | The condition it detects is "a third party silently stopped doing something" | Run the command against known-bad production state, available now: 191 of 193 `never_delivered` |
-| Uploads land within one interval | Requires a real upload on a real channel | Cross-check a new video's `published_at` against its ingest time |
-
-The mechanically testable parts (stalest-first ordering, budget cap arithmetic, the `Pending` rule) are small additions to paths already covered by the five existing `tests/Feature/WebSub*Test.php` files, and those must keep passing. If the sweep or the `Pending` rule later grows real branching logic, add tests then. Writing them now would encode assumptions about hub behaviour that [028] just disproved.
+- The full Pest suite passes with no WebSub references remaining
+- A repo-wide grep for `websub` / `pubsubhubbub` returns only `reference/WEBSUB_DELIVERY_INVESTIGATION.md`, `ROADMAP_DONE.md`, and the `peristalsis/` business docs
+- Adding a subscription still succeeds with no subscription side effect
+- `channels:poll` from [029] still ingests after the removal
 
 ### Acceptance Criteria
 
-- [ ] A scheduled hourly sweep polls the N stalest channels by `last_fetched_at`, N being a configured budget
-- [ ] The outbound request rate stays constant as channel count grows, so freshness degrades with scale but the 429 ceiling is never approached
-- [ ] The sweep runs a full day on production with no sustained 429s and no elevated fetch failures
-- [ ] After a day of sweeps, no channel's `last_fetched_at` is older than the configured refresh interval
-- [ ] An upload on a channel whose hub page reads "Content received: n/a" reaches the feed within one refresh interval
-- [ ] The WebSub subscribe and receive paths are unchanged and still ingest when the hub does deliver, with the five existing `WebSub*Test.php` files still passing
-- [ ] A subscription stuck in `Pending` past the retry window is a backstop re-poll candidate
-- [ ] One command reports counts by status, oldest and newest `last_delivery_at`, and the never-delivered count, so a drought needs no tinker session to see
-- [ ] That command warns loudly against current production state, where 191 of 193 subscriptions have never delivered
-- [ ] Any channel whose stored `channels.rss_url` deviates from the canonical `channel_id` form is surfaced, closing the latent variant of the topic-mismatch failure
+- [ ] Every file in the deletion table is gone
+- [ ] The WebSub routes, CSRF exemption, scheduler entries, `config/services.php` block, and `.env.example` keys are removed
+- [ ] Adding a subscription no longer attempts a hub subscription, and succeeds
+- [ ] A new forward migration drops `channel_subscriptions`; the original create and alter migrations are left in place
+- [ ] The `channels` conditional-GET columns and the pure-DB feed reads are untouched
+- [ ] `reference/WEBSUB_DELIVERY_INVESTIGATION.md` is retained
+- [ ] A repo-wide grep for `websub` / `pubsubhubbub` hits only that doc, `ROADMAP_DONE.md`, and `peristalsis/`
+- [ ] The full Pest suite passes
+- [ ] `channels:poll` still ingests new videos on production after the removal
+
+---
+
+## [031] Scale ingestion past one server IP
+
+**Status:** `freezer`
+**Depends On:** [029]
+
+### Goal
+
+Ingestion keeps working when the channel table is large enough that a full 30-minute sweep no longer fits inside the safe request rate of a single server IP. Deferred on purpose: at 193 channels [029]'s poll-everything sweep is correct and this is all complexity for no gain. This item exists so the analysis is not re-derived from scratch when it is needed, and so [029] can stay simple without pretending the ceiling does not exist.
+
+### Scope
+
+- Measuring the actual per-IP request ceiling, which is currently unknown
+- Cadence-tiered and demand-ordered channel selection
+- The YouTube Data API as a second, IP-independent request budget
+- Distributed polling across owned servers
+- **Not in scope:** residential proxy rotation. See the reasoning below
+
+### Technical Notes
+
+**Trigger for unfreezing:** a [029] sweep hitting `POLL_MAX_PER_SWEEP`, sustained block signals from the [029] detector, or a deliberate decision to take the app multi-tenant. Not before.
+
+**The central unknown.** `reference/YOUTUBE_RSS_RATE_LIMITS.md` establishes that no per-IP RSS ceiling is published, and that the `~1,500-2,000 channels` figure inherited into [021] is unsourced and probably misattributed from a FreeTube post describing a different endpoint under an explicit RSS exemption. Every scaling decision below multiplies a number nobody has measured. **Measure it first:** ramp the [029] sweep's request rate stepwise on production and watch the [029] block detector. That converts the central unknown into a number, and it is cheap. Everything else here is guesswork until it is done.
+
+**Why a fixed budget beats a staleness threshold at scale.** Poll-everything makes the outbound request rate grow linearly with channel count. A fixed hourly budget with rotation makes it a constant you set, and freshness degrades gracefully instead of the request rate exploding. At a 200/hour budget:
+
+| Channels | Refresh interval | Requests/day |
+| --- | --- | --- |
+| 193 | ~1 hour | ~4,600 |
+| 1,000 | ~5 hours | ~4,600 |
+| 10,000 | ~2 days | ~4,600 |
+| 50,000 | ~10 days | ~4,600 |
+
+The 50,000 row is why a flat budget alone is not the answer either: RSS returns only the ~15 most recent videos per channel, so a 10-day interval starts losing uploads outright on active channels, not merely delaying them.
+
+**Cadence tiering is the largest single lever, and it costs no infrastructure.** Flat rotation gives a dormant channel the same slot as a daily uploader. Derive an expected upload interval per channel from its own video history and poll proportional to it. A rough 50,000-channel model:
+
+| Tier | Share | Poll every | Requests/day |
+| --- | --- | --- | --- |
+| Hot, 2+ uploads/week | 10% (5,000) | 2 hours | 60,000 |
+| Warm, weekly | 25% (12,500) | 12 hours | 25,000 |
+| Cold, monthly | 40% (20,000) | 3 days | 6,700 |
+| Dormant, 6 months silent | 25% (12,500) | 7 days | 1,800 |
+| **Total** | 50,000 | | **~93,500/day** |
+
+Roughly 13x cheaper than flat 30-minute polling of the same table, while leaving hot channels far fresher than any flat rotation would.
+
+**Demand ordering, not demand-driven fetching.** Polling a channel only when a user loads a feed containing it scales request volume with active attention rather than catalog size, which is a genuinely better scaling property. Fetching *during* the request is not: a feed with 200 stale channels blocks first paint for tens of seconds, which is why [021] removed exactly that behaviour and [022] made feed reads pure DB. Demand is also bursty in the worst possible shape, since a morning login spike is precisely the burst pattern that draws an IP block, whereas a budget smooths by construction.
+
+The synthesis is to keep the budget as the rate governor and let demand drive **priority**: a feed load records want on the channel rows (a cheap non-blocking write, gated by the fetch TTL so repeat loads do not pile up), and the sweep selects `ORDER BY demand DESC, last_fetched_at ASC`. Feed reads stay pure DB, the queue absorbs the spike so the cost of a burst is latency rather than a block, and an empty demand queue means a sweep that costs nothing. A **floor** stays underneath it, polling every channel at least once every N days regardless of demand, so an unviewed channel does not accumulate permanent gaps against the ~15-item RSS cap.
+
+**The Data API is a separate budget, and cheaper than [023] assumes.** `playlistItems.list` against a channel's uploads playlist costs **1 unit** and returns up to 50 videos (confirmed against Google's quota-cost documentation, 2026-08-24). The free 10,000 units/day is therefore ~10,000 channel checks/day, and granted quota increases are commonly 50,000-100,000. Two properties matter more than the volume: the quota is **per project, not per IP**, so it is an entirely independent ceiling with no block risk; and a unit quota tolerates bursts that an IP ceiling does not, which makes it the natural home for demand spikes while RSS carries the floor. The 50,000-channel tiered model above, ~93,500 checks/day, fits inside a single granted quota increase with no proxies and no server fleet.
+
+The audit is the constraint, not the quota: reported waits run from weeks to several months, and denials cluster on vague use cases, missing privacy policies, and anything resembling bulk download. Apply well before the capacity is needed.
+
+**Distributed polling is legitimate but is a later rung.** N owned servers each polling a disjoint channel slice gives N times the per-IP limit and is ordinary horizontal scaling, spreading real load rather than concealing it. Three caveats: it multiplies a ceiling nobody has measured; N droplets from one provider are N addresses in ranges that already score worse than residential and are trivially correlated by ASN, so spread across providers and regions or the gain is well under N; and it carries real operational weight in slice assignment, result shipping, per-node health, and partial-failure semantics.
+
+**Residential proxy rotation is out.** It is evasion rather than architecture, defeating an anti-abuse decision deliberately applied to us by making traffic appear to come from unrelated home users. It is also a bad engineering bet: an arms race against Google's anti-abuse team that breaks without warning, poisons any future relationship with YouTube, and rests on a supply chain that is independently ethically compromised.
+
+**Escalation ladder, in order:**
+
+1. Measure the real per-IP ceiling
+2. Cadence tiering plus demand ordering, with a floor underneath
+3. Data API `playlistItems.list` for the hot tier, RSS for the cold tier
+4. Data API quota increase application, applied for early
+5. Distributed polling across owned servers, mixed providers and regions
+
+**Related:** `reference/YOUTUBE_RSS_RATE_LIMITS.md` sections 5, 7, and 8 are the evidence base for all of the above. Section 6 records a platform-wide `videos.xml` outage over 13-17 February 2026, which is the standing argument for holding a second ingestion path that does not touch that endpoint, and which [030] should weigh before deleting WebSub outright.
+
+### Acceptance Criteria
+
+- [ ] The per-IP request ceiling is measured on production and recorded as a number, replacing the unsourced `~1,500-2,000` figure
+- [ ] Channel selection is tiered by observed upload cadence rather than treating every channel alike
+- [ ] Feed loads raise a channel's poll priority without blocking the request, and feed reads stay pure DB
+- [ ] A floor guarantees every channel is polled at least once every N days regardless of demand
+- [ ] Outbound request rate stays bounded by a value we set, whatever the channel count or demand spike
+- [ ] The 15-item RSS cap never silently drops an upload at the configured tier intervals

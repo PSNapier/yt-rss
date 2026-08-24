@@ -6,6 +6,7 @@ use App\Enums\WebSubSubscriptionStatus;
 use App\Models\Channel;
 use App\Models\ChannelSubscription;
 use App\Models\Video;
+use App\Services\PollCooldown;
 use App\Services\RssFetcher;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
@@ -18,8 +19,19 @@ use Illuminate\Support\Facades\Cache;
 #[Description('Failure-driven re-poll of channels push may have missed (lapsed lease, failed renewal, anomalous silence)')]
 class WebSubBackstopCommand extends Command
 {
-    public function handle(RssFetcher $fetcher): int
+    public function handle(RssFetcher $fetcher, PollCooldown $cooldown): int
     {
+        // A block is IP-scoped, so it applies to every automatic fetch path, not just
+        // the main sweep. Polling through one wastes requests and may extend it.
+        if ($cooldown->isActive()) {
+            $this->components->warn(sprintf(
+                'Block cooldown active until %s; skipping backstop.',
+                $cooldown->activeUntil()?->toIso8601String() ?? 'unknown',
+            ));
+
+            return self::SUCCESS;
+        }
+
         $limit = (int) ($this->option('limit') ?: config('services.websub.backstop_limit', 200));
 
         $this->flagRecoveryAfterCallbackDowntime();
@@ -93,11 +105,12 @@ class WebSubBackstopCommand extends Command
             ]);
 
         $this->components->info(sprintf(
-            'Backstop polled %d channels (fetched: %d, not modified: %d, failed: %d).',
+            'Backstop polled %d channels (fetched: %d, not modified: %d, failed: %d, blocked: %d).',
             $candidates->count(),
             $result['fetched'],
             $result['not_modified'],
             $result['failed'],
+            $result['blocked'],
         ));
 
         return self::SUCCESS;

@@ -29,3 +29,20 @@ Schedule::command('websub:backstop')
     ->hourly()
     ->withoutOverlapping(50)
     ->runInBackground();
+
+/*
+|--------------------------------------------------------------------------
+| RSS polling
+|--------------------------------------------------------------------------
+|
+| Polling is the guaranteed ingestion path: YouTube's publisher does not reliably
+| ping its own hub for our feeds, so push cannot be relied on. The sweep polls
+| every channel and passes force, which makes this schedule the only interval
+| control. `withoutOverlapping` keeps a slow sweep from stacking on the next one.
+|
+*/
+
+Schedule::command('channels:poll')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping(29)
+    ->runInBackground();

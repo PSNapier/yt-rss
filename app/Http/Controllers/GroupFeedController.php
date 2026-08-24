@@ -68,9 +68,12 @@ class GroupFeedController extends Controller
 
         $result = $fetcher->fetchForGroup($group, force: true);
 
+        // A block signal is a failure from the user's side: nothing was refreshed.
+        $failed = $result['failed'] + $result['blocked'];
+
         return back()->with('toast', [
-            'type' => $result['failed'] > 0 ? 'warning' : 'success',
-            'message' => "Refreshed {$result['fetched']} channels (failed: {$result['failed']}).",
+            'type' => $failed > 0 ? 'warning' : 'success',
+            'message' => "Refreshed {$result['fetched']} channels (failed: {$failed}).",
         ]);
     }
 }
