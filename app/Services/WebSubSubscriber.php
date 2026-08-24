@@ -81,7 +81,7 @@ class WebSubSubscriber
     {
         $result = $this->fetcher->fetchForChannels(collect([$channel]), force: true);
 
-        if ($result['failed'] > 0) {
+        if ($result['failed'] + $result['blocked'] > 0) {
             Log::warning('WebSub backfill poll failed', [
                 'channel_id' => $channel->channel_id,
                 'result' => $result,

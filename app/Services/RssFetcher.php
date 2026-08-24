@@ -29,7 +29,7 @@ class RssFetcher
     /**
      * Fetch RSS for all channels in a group, refreshing stale ones.
      *
-     * @return array{fetched: int, failed: int, skipped: int, not_modified: int}
+     * @return array{fetched: int, failed: int, skipped: int, not_modified: int, blocked: int}
      */
     public function fetchForGroup(ChannelGroup $group, bool $force = false): array
     {
@@ -40,7 +40,7 @@ class RssFetcher
      * Fetch RSS for a collection of channels, refreshing stale ones.
      *
      * @param  Collection<int, Channel>  $channels
-     * @return array{fetched: int, failed: int, skipped: int, not_modified: int}
+     * @return array{fetched: int, failed: int, skipped: int, not_modified: int, blocked: int}
      */
     public function fetchForChannels(Collection $channels, bool $force = false): array
     {
@@ -54,12 +54,14 @@ class RssFetcher
                 'failed' => 0,
                 'skipped' => $channels->count(),
                 'not_modified' => 0,
+                'blocked' => 0,
             ];
         }
 
         $fetched = 0;
         $failed = 0;
         $notModified = 0;
+        $blocked = 0;
 
         foreach ($stale->chunk($this->poolChunkSize) as $batch) {
             $responses = Http::pool(fn (Pool $pool) => $batch->map(
@@ -82,6 +84,19 @@ class RssFetcher
                         'rss_etag' => $this->validator($resp->header('ETag')),
                         'rss_last_modified' => $this->validator($resp->header('Last-Modified')),
                     ], fn ($value) => $value !== null))->save();
+
+                    continue;
+                }
+
+                $blockSignal = $resp instanceof Response ? $this->blockSignal($resp) : null;
+
+                if ($blockSignal !== null) {
+                    $blocked++;
+                    Log::warning('RSS block signal', [
+                        'channel_id' => $channel->channel_id,
+                        'signal' => $blockSignal,
+                        'status' => $resp->status(),
+                    ]);
 
                     continue;
                 }
@@ -119,7 +134,47 @@ class RssFetcher
             'failed' => $failed,
             'skipped' => $channels->count() - $stale->count(),
             'not_modified' => $notModified,
+            'blocked' => $blocked,
         ];
+    }
+
+    /**
+     * Why this response looks like a block rather than an ordinary failure, or null.
+     *
+     * A YouTube RSS block does not arrive as a 429. Across every documented case it
+     * is an HTTP 403, or an HTTP 200 carrying Google's "automated queries" HTML
+     * interstitial in place of Atom, so a metric counting only 429s reads zero
+     * through the whole outage.
+     */
+    protected function blockSignal(Response $response): ?string
+    {
+        if ($response->status() === 403) {
+            return 'http_403';
+        }
+
+        if ($response->status() === 429) {
+            return 'http_429';
+        }
+
+        if ($response->status() === 200 && ! $this->looksLikeAtom($response->body())) {
+            return 'non_atom_200';
+        }
+
+        return null;
+    }
+
+    /**
+     * True when the body opens an Atom feed, rather than an HTML interstitial.
+     */
+    protected function looksLikeAtom(string $body): bool
+    {
+        $head = ltrim(substr($body, 0, 2048));
+
+        if ($head === '') {
+            return false;
+        }
+
+        return (bool) preg_match('/<(?:[A-Za-z0-9_-]+:)?feed[\s>]/', $head);
     }
 
     /**
