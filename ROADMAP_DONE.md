@@ -1,5 +1,89 @@
 # Roadmap Done
 
+## [028] Diagnose the WebSub delivery drought
+
+**Status:** `done`
+**Mode:** `Manual`
+**Depends On:** [021], [022], [027]
+
+### Goal
+
+Find out why the feed stopped receiving new videos after the [021]/[022]/[027] deploy, with a green scheduler, zero errors, and healthy subscriptions. Prove the cause rather than guess at it, and decide what the ingestion architecture has to become. Full write-up: `reference/WEBSUB_DELIVERY_INVESTIGATION.md`. The fix itself is [029].
+
+### Scope
+
+- Establish whether uploads were happening at all, and whether polling still worked
+- Rule in or out every layer between YouTube and the database: publisher, hub, Cloudflare edge, callback route, HMAC, subscription rows, scheduler
+- Reach a proven root cause, not a ranked suspicion
+- Record the design consequence and hand the build to a follow-up item
+
+### Findings
+
+A single forced poll of all 193 channels recovered **14 videos** that push had never delivered (4190 to 4204), newest published 15:15 that day, with 0 fetch failures. Uploads were happening; WebSub was not delivering them.
+
+Production state at diagnosis:
+
+| Signal | Value | Reading |
+| --- | --- | --- |
+| subscriptions by status | 193/193 `active` | hub verified every callback |
+| `last_verified_at` (max) | 2026-08-23 19:17 | all subscribed at deploy |
+| `expires_at` (min) | 2026-08-28 19:15 | leases healthy, 5-day Google grant |
+| `never_delivered` | 191 of 193 | ~2 POSTs landed in 20 hours |
+| `delivery_failed_at` / `renewal_failures` | 0 / 0 | nothing on our side threw |
+| `laravel.log` | 315 bytes | no trace of a real hub POST |
+
+**Root cause: YouTube's publisher does not reliably ping its own hub for these feeds.** Google's hub exposes per-subscription state at `pubsubhubbub.appspot.com/subscription-details` (requires `hub.callback`, `hub.topic`, and the real `hub.secret`). Ten subscriptions were read: 3 random plus 7 belonging to channels among the 14 recovered uploads, so channels with a *proven* post-subscribe upload. All ten read identically: State `verified`, verification at deploy time, expiration 2026-08-28, and **Content received: n/a**, Content delivered: n/a, 0 delivery requests, 0% errors.
+
+Content received `n/a` on a topic with a proven upload means the hub never got the content. There were no failed deliveries to us, there was nothing to deliver. The loss sits upstream of the hub, above anything our side can touch. Externally corroborated by [Google issue 204101548](https://issuetracker.google.com/issues/204101548) (subscribe verifies, callback never fires).
+
+Everything else is eliminated:
+
+| Hypothesis | Verdict |
+| --- | --- |
+| Topic-string mismatch | **Dead.** 0 mismatches of 193 against the canonical `channel_id` form |
+| Structural difference in our rows | **Dead.** Rows uniform, and the hub confirms every sampled subscription correctly registered |
+| Burst-subscribe throttling | **Moot.** Delivery-side throttling cannot explain content the hub never received |
+| Cloudflare / the edge | **Ruled out.** 7 mitigated of 1.18k requests, 89 POSTs zone-wide in 24h, Bot Fight Mode off; the only `/websub/` rows are our own diagnostic probes |
+| Our callback / receive path | **Ruled out.** Reachable externally, and a correctly-signed self-POST of a real feed body returns `200 OK` and ingests |
+| Secret / token mismatch | **Ruled out.** `postSubscribe` sends the same persisted `secret` and `callback_token` it stores; `ensureSubscribed` and `renew` reuse them |
+| The scheduler | **Ruled out.** A duplicate broken Forge cron was found and deleted; the remaining `schedule:run` entry shows `websub:renew` and `websub:backstop` both due `0 * * * *` |
+
+### Design consequence
+
+WebSub cannot be the sole ingestion path. It is an accelerator for the cases where YouTube chooses to ping, and nothing on our side can make it fire. Polling has to be the backbone: a fixed hourly stalest-first budget, plus a drought signal, plus the `Pending` backstop hole. Specified and handed to **[029]**.
+
+Two secondary findings carried forward into [029]:
+
+- **Latent risk.** `Channel::rssUrl()` returns the stored `channels.rss_url` column first and only falls back to building the canonical string (`Channel.php:44`). Every current writer builds the canonical form, so nothing is wrong today, but a legacy row with an odd `rss_url` would produce this exact outage signature.
+- **Backstop coverage hole.** `WebSubBackstopCommand::reasonToRepoll` never fires for a subscription stuck `Pending`: `leaseHasLapsed` short-circuits on `status !== Active`, and `silenceAnomaly` needs `count >= 3` uploads plus 48 hours of silence.
+
+### Evidence gotchas for future debugging
+
+- An empty `laravel.log` is **not** evidence that pushes are absent. A successful delivery logs nothing at all; only `last_delivery_at` distinguishes the two cases.
+- Nginx silence proves nothing. Forge sets `access_log off;` per site, and `/var/log/nginx/access.log` is the catch-all server block.
+- `grep -c` with zero matches exits non-zero and will silently break an `&&` chain. Chain diagnostic greps with `;`.
+- On the Forge box `grep` is not on the login shell's `PATH`; `/bin/grep` works.
+
+### Acceptance Criteria
+
+- [x] Confirmed uploads were actually happening: a forced poll recovered 14 videos push never delivered
+- [x] Confirmed RSS polling is healthy as a fallback path: 193 fetched, 0 failed
+- [x] The broken duplicate "Websub" Forge cron job is deleted, leaving one correct `schedule:run` entry
+- [x] Cloudflare ruled out: 7 mitigated of 1.18k requests, no hub POSTs reaching the edge at all
+- [x] Callback reachability, HMAC verification, and end-to-end ingest confirmed working by a signed self-POST returning `200 OK`
+- [x] Secret and callback-token mismatch ruled out by reading `postSubscribe`, `ensureSubscribed`, and `renew`
+- [x] Topic strings verified canonical across all rows: 0 mismatches of 193
+- [x] Root cause proven hub-side, not merely ranked: `subscription-details` reports "Content received: n/a" on topics with proven uploads
+- [x] The two secondary defects (`rss_url` latent risk, `Pending` backstop hole) are recorded and handed forward
+- [x] Findings written to `reference/WEBSUB_DELIVERY_INVESTIGATION.md` with reproduction commands and evidence gotchas
+- [x] The architectural verdict is decided and specified as a follow-up item: polling becomes the backbone, WebSub stays as an accelerator ([029])
+
+### Verification (no automated tests)
+
+Nothing was built here, so there is nothing to assert. This item is a diagnosis: its output is a proven cause, a reference document, and a specified follow-up. Every criterion was verified by direct observation against production, and the commands to reproduce each reading are in `reference/WEBSUB_DELIVERY_INVESTIGATION.md` (sections 4, 7, and 11.5).
+
+---
+
 ## [027] Subscribe channels missing a WebSub subscription (`websub:subscribe-missing`)
 
 **Status:** `done`

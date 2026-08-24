@@ -1,6 +1,6 @@
 # Roadmap
 
-<!-- Next task number: [028] -->
+<!-- Next task number: [030] -->
 
 ## [006] Stop feed reverting to skeleton + scroll reset on tab return
 
@@ -488,3 +488,74 @@ Let a user add a channel by pasting a YouTube channel URL or an @handle, not onl
 - [ ] A `/c/` custom URL is rejected with a message directing the user to the @handle
 - [ ] When the counter reaches 9500, an API-requiring add is refused with "daily new-channel cap reached, try again soon", while a `UC…`/`/channel/…` add still succeeds
 - [ ] The counter is stored durably and resets at midnight America/Los_Angeles
+
+---
+
+## [029] Make polling the backbone, demote WebSub to accelerator
+
+**Status:** `todo`
+**Mode:** `Manual`
+**Depends On:** [028]
+
+### Goal
+
+Videos keep arriving on a predictable schedule whether or not Google's hub delivers anything, and a delivery drought becomes visible instead of silent. [028] proved YouTube's publisher does not reliably ping its own hub for our feeds, so push is unreliable by nature and nothing on our side can fix it. This item makes polling the guaranteed path and leaves WebSub in place as a free accelerator for the cases where it does fire.
+
+### Scope
+
+- An hourly stalest-first poll budget, so a push outage costs hours of staleness rather than everything
+- A drought signal, so "push is dead" is a reportable state rather than a tinker session
+- The `Pending` backstop coverage hole from [028]
+- The `channels.rss_url` deviation check from [028]
+- **Not in scope:** any change to the subscribe or receive path. [028] proved both correct
+
+### Technical Notes
+
+**Keep WebSub, demote it.** No change to the subscribe or receive path. `ChannelSubscription::callbackUrl()` derives the URL from `services.websub.callback_base` (currently null, falling back to `APP_URL` = `https://peristalsis.tv`) at call time rather than storing it, so a later host change is picked up by the next renewal automatically.
+
+**Poll floor: a fixed hourly budget, stalest-first.** Ingestion is push-only today. `RssFetcher::fetchForChannels` is reached only from the backstop, and the backstop is failure-driven, gated behind `backstop_min_silence_hours` (48) and `backstop_min_repoll_hours` (6). Every failure signal read healthy during the [028] outage, so the backstop was a no-op while ~95% of uploads went missing.
+
+Add a scheduled sweep polling the **N most-stale channels each hour** by `last_fetched_at`, N being a configured budget. Deliberately a budget, **not** "poll everything older than X hours": a budget makes the outbound request rate a constant you set, independent of channel count, while a staleness threshold grows linearly with channel count and walks straight back into the 429 ceiling [021] was built to escape. Freshness degrades gracefully instead of the request rate exploding. At a 200/hour budget:
+
+| Channels | Refresh interval | Requests/day |
+| --- | --- | --- |
+| 193 (today) | ~1 hour | ~4,600 |
+| 1,000 | ~5 hours | ~4,600 |
+| 2,000 | ~10 hours | ~4,600 |
+| 10,000 | ~2 days | ~4,600 |
+
+For scale: [021] put the 429 threshold at naive polling of ~1,500-2,000 channels, roughly 96,000 requests/day on the old 30-minute TTL. A fixed 4,600/day is about 5% of that. Conditional GET is already implemented (`RssFetcher::pollHeaders` sends `If-None-Match` / `If-Modified-Since`, 304s handled at `RssFetcher.php:76-88`), so most of the budget returns 304 with no body transferred.
+
+**Drought detection.** Nothing surfaces "push is dead" as a state. `services.websub.alert_webhook` fires only on renewal failure, which stayed at 0 throughout the outage. Add a `websub:health` command (or extend the backstop) reporting counts by status, oldest and newest `last_delivery_at`, and the never-delivered count, warning loudly when install-wide deliveries flatline over N hours. Current production is a live known-bad fixture to build against: 191 of 193 have never delivered.
+
+**Backstop coverage hole.** Add a rule to `WebSubBackstopCommand::reasonToRepoll` treating a subscription `Pending` beyond a small multiple of `renew_retry_hours` as a re-poll candidate. Today it falls through both `leaseHasLapsed` (short-circuits on `status !== Active`) and `silenceAnomaly` (needs 3 uploads plus 48 hours of silence).
+
+**`rss_url` deviation.** Surface any channel whose stored `channels.rss_url` differs from the canonical form built from `channel_id`. Currently 0 of 193 deviate, but `Channel::rssUrl()` prefers the stored column, so a legacy odd row reproduces the [028] signature exactly and invisibly. Folding the check into the health command is the cheap option.
+
+**Manual** because the budget has to be tuned against live 429 behaviour and verified over a full day of production traffic.
+
+### Verification (no automated tests)
+
+This item ships no `### Tests` section, deliberately. Every open criterion is a claim about live third-party behaviour over time, and a Pest test can only assert against a fake of that behaviour, which is exactly the thing [028] proved we cannot model. The outage was invisible precisely because every in-process signal read healthy: a suite mocking the hub and the RSS endpoint would have stayed green through all 20 hours of it.
+
+| Criterion type | Why a test cannot carry it | How it is verified instead |
+| --- | --- | --- |
+| Poll budget holds under real load | The 429 ceiling is YouTube's, unpublished, observed only in production; a faked client proves the code issues N requests, not that N is safe | Run the sweep on production, watch failure counts and response codes across a full day |
+| No channel exceeds the refresh interval | Depends on real timing across hours of scheduler ticks | Query `max(now() - last_fetched_at)` across all channels after a day of sweeps |
+| Drought detection warns correctly | The condition it detects is "a third party silently stopped doing something" | Run the command against known-bad production state, available now: 191 of 193 `never_delivered` |
+| Uploads land within one interval | Requires a real upload on a real channel | Cross-check a new video's `published_at` against its ingest time |
+
+The mechanically testable parts (stalest-first ordering, budget cap arithmetic, the `Pending` rule) are small additions to paths already covered by the five existing `tests/Feature/WebSub*Test.php` files, and those must keep passing. If the sweep or the `Pending` rule later grows real branching logic, add tests then. Writing them now would encode assumptions about hub behaviour that [028] just disproved.
+
+### Acceptance Criteria
+
+- [ ] A scheduled hourly sweep polls the N stalest channels by `last_fetched_at`, N being a configured budget
+- [ ] The outbound request rate stays constant as channel count grows, so freshness degrades with scale but the 429 ceiling is never approached
+- [ ] The sweep runs a full day on production with no sustained 429s and no elevated fetch failures
+- [ ] After a day of sweeps, no channel's `last_fetched_at` is older than the configured refresh interval
+- [ ] An upload on a channel whose hub page reads "Content received: n/a" reaches the feed within one refresh interval
+- [ ] The WebSub subscribe and receive paths are unchanged and still ingest when the hub does deliver, with the five existing `WebSub*Test.php` files still passing
+- [ ] A subscription stuck in `Pending` past the retry window is a backstop re-poll candidate
+- [ ] One command reports counts by status, oldest and newest `last_delivery_at`, and the never-delivered count, so a drought needs no tinker session to see
+- [ ] That command warns loudly against current production state, where 191 of 193 subscriptions have never delivered
+- [ ] Any channel whose stored `channels.rss_url` deviates from the canonical `channel_id` form is surfaced, closing the latent variant of the topic-mismatch failure
