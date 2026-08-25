@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Channel;
 use App\Models\PollSweep;
+use App\Services\PollAlert;
 use App\Services\PollCooldown;
 use App\Services\RssFetcher;
 use Carbon\CarbonImmutable;
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\Log;
 #[Description('Poll every channel\'s RSS feed in one sweep: the sole automatic ingestion path')]
 class PollChannelsCommand extends Command
 {
-    public function handle(RssFetcher $fetcher, PollCooldown $cooldown): int
+    public function handle(RssFetcher $fetcher, PollCooldown $cooldown, PollAlert $alert): int
     {
         if ($cooldown->isActive() && ! $this->option('ignore-cooldown')) {
             $until = $cooldown->activeUntil();
@@ -62,20 +63,41 @@ class PollChannelsCommand extends Command
 
         // force: true — the schedule is the only interval control. Sweep drift lands
         // channels at 29-point-something minutes old, and the TTL would skip those.
-        $result = $fetcher->fetchForChannels($channels, force: true);
+        $result = $fetcher->forSweep()->fetchForChannels($channels, force: true);
 
         $attempted = $channels->count();
-        $bad = $result['failed'] + $result['blocked'];
-        $ratio = $attempted > 0 ? $bad / $attempted : 0.0;
+        $blockedRatio = $attempted > 0 ? $result['blocked'] / $attempted : 0.0;
+        $failedRatio = $attempted > 0 ? $result['failed'] / $attempted : 0.0;
 
-        $triggered = $this->shouldCooldown($attempted, $ratio);
+        // Parking for six hours is the right answer to a block and the wrong answer to
+        // a timeout storm: a block is all-or-nothing and polling through it may extend
+        // it, while backing off a transport problem guarantees loss and fixes nothing.
+        $triggered = $this->overRatio($attempted, $blockedRatio, 'block_failure_ratio', 0.5);
 
         if ($triggered) {
             $cooldown->start(sprintf(
-                '%d of %d requests failed (%d of them block signals)',
-                $bad,
-                $attempted,
+                '%d of %d requests carried a block signal',
                 $result['blocked'],
+                $attempted,
+            ));
+        }
+
+        $failureAlert = ! $triggered
+            && $this->overRatio($attempted, $failedRatio, 'failure_alert_ratio', 0.5);
+
+        if ($failureAlert) {
+            $alert->raise('Poll sweep failure storm', [
+                'failed' => $result['failed'],
+                'attempted' => $attempted,
+                'blocked' => $result['blocked'],
+                'categories' => $result['failures'],
+            ]);
+
+            $this->components->error(sprintf(
+                'Failure storm: %d of %d failed without a block signal (%s). Still polling.',
+                $result['failed'],
+                $attempted,
+                $this->describeFailures($result['failures']),
             ));
         }
 
@@ -87,22 +109,40 @@ class PollChannelsCommand extends Command
             'not_modified' => $result['not_modified'],
             'failed' => $result['failed'],
             'blocked' => $result['blocked'],
+            'failure_categories' => $result['failures'] ?: null,
+            'shorts_flagged' => $result['shorts_flagged'],
             'cap_hit' => $capHit,
             'cooldown_triggered' => $triggered,
+            'failure_alert' => $failureAlert,
         ]);
 
         $this->pruneSweepHistory();
 
         $this->components->info(sprintf(
-            'Polled %d channels (fetched: %d, not modified: %d, failed: %d, blocked: %d).',
+            'Polled %d channels (fetched: %d, not modified: %d, failed: %d, blocked: %d, short-form flagged: %d).',
             $attempted,
             $result['fetched'],
             $result['not_modified'],
             $result['failed'],
             $result['blocked'],
+            $result['shorts_flagged'],
         ));
 
+        if ($result['failures'] !== []) {
+            $this->components->warn('Failure categories: '.$this->describeFailures($result['failures']));
+        }
+
         return self::SUCCESS;
+    }
+
+    /**
+     * @param  array<string, int>  $failures
+     */
+    protected function describeFailures(array $failures): string
+    {
+        return collect($failures)
+            ->map(fn (int $count, string $category) => "{$category} {$count}")
+            ->implode(', ');
     }
 
     /**
@@ -119,10 +159,10 @@ class PollChannelsCommand extends Command
     }
 
     /**
-     * Blocks are all-or-nothing, so a sweep-wide bad-response ratio is the most
-     * reliable tell. The minimum sample keeps a tiny sweep from tripping it.
+     * Both sweep-wide signals are ratios against the same minimum sample, which keeps
+     * a tiny sweep from tripping either one on a single bad response.
      */
-    protected function shouldCooldown(int $attempted, float $ratio): bool
+    protected function overRatio(int $attempted, float $ratio, string $configKey, float $default): bool
     {
         $minSample = max(1, (int) config('services.polling.block_min_sample', 5));
 
@@ -130,6 +170,6 @@ class PollChannelsCommand extends Command
             return false;
         }
 
-        return $ratio >= (float) config('services.polling.block_failure_ratio', 0.5);
+        return $ratio >= (float) config('services.polling.'.$configKey, $default);
     }
 }

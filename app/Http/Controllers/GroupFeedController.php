@@ -48,6 +48,7 @@ class GroupFeedController extends Controller
                         $join->on('user_video_states.youtube_video_id', '=', 'videos.youtube_video_id')
                             ->where('user_video_states.user_id', $userId);
                     })
+                    ->where('videos.is_short', false)
                     ->where(function ($q) {
                         $q->whereNull('user_video_states.state')
                             ->orWhere('user_video_states.state', '!=', 'hidden');

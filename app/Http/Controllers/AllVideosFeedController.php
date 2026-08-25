@@ -45,6 +45,7 @@ class AllVideosFeedController extends Controller
                         $join->on('ucf.channel_id', '=', 'videos.channel_id')
                             ->where('ucf.user_id', $userId);
                     })
+                    ->where('videos.is_short', false)
                     ->where(function ($q) {
                         $q->whereNull('user_video_states.state')
                             ->orWhere('user_video_states.state', '!=', 'hidden');

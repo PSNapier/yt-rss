@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['channel_id', 'youtube_video_id', 'title', 'thumbnail_url', 'published_at'])]
+#[Fillable(['channel_id', 'youtube_video_id', 'title', 'thumbnail_url', 'published_at', 'is_short'])]
 class Video extends Model
 {
     /** @use HasFactory<VideoFactory> */
@@ -53,6 +53,7 @@ class Video extends Model
                                         .'left join user_video_states as uvs2 '
                                         .'on uvs2.youtube_video_id = v2.youtube_video_id and uvs2.user_id = ? '
                                         .'where v2.channel_id = videos.channel_id '
+                                        .'and v2.is_short = 0 '
                                         .'and uvs2.state is null '
                                         .'and (v2.published_at > videos.published_at '
                                         .'or (v2.published_at = videos.published_at and v2.id > videos.id))'
@@ -68,6 +69,7 @@ class Video extends Model
     {
         return [
             'published_at' => 'datetime',
+            'is_short' => 'boolean',
             'channel_is_favorite' => 'boolean',
         ];
     }

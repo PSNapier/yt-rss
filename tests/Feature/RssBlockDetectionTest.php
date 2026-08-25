@@ -77,9 +77,10 @@ test('it skips the websub backstop while cooldown is active', function () {
     Http::assertNothingSent();
 });
 
-test('a sweep that only fails without block signals still enters cooldown', function () {
+test('a sweep that only fails without block signals keeps polling and raises a storm instead', function () {
     Http::fake(['*' => Http::response('', 500)]);
     config()->set('services.polling.block_failure_ratio', 0.5);
+    config()->set('services.polling.failure_alert_ratio', 0.5);
     config()->set('services.polling.block_min_sample', 2);
 
     Channel::factory()->count(4)->create(['last_fetched_at' => null]);
@@ -90,6 +91,7 @@ test('a sweep that only fails without block signals still enters cooldown', func
 
     expect($sweep->blocked)->toBe(0)
         ->and($sweep->failed)->toBe(4)
-        ->and($sweep->cooldown_triggered)->toBeTrue()
-        ->and(app(PollCooldown::class)->isActive())->toBeTrue();
+        ->and($sweep->cooldown_triggered)->toBeFalse()
+        ->and($sweep->failure_alert)->toBeTrue()
+        ->and(app(PollCooldown::class)->isActive())->toBeFalse();
 });
