@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-25
 **Environment:** production (Laravel Forge, VPS `elk-moon`, site dir `/home/forge/peristalsis.on-forge.com/current`, public host `https://peristalsis.tv`); local control readings from the Herd dev box
-**Status:** root cause of the post-[029] loss proven to the transport layer. Fixes designed, not built.
+**Status:** root cause of the post-[029] loss proven and located, section 12. Fixes designed, not built.
 **Related roadmap items:** `[032]` (this diagnosis), `[029]` (the polling backbone under investigation), `[028]` (the WebSub diagnosis that preceded it, archived in `ROADMAP_DONE.md`)
 **Prior reading:** `reference/WEBSUB_DELIVERY_INVESTIGATION.md`, `reference/YOUTUBE_RSS_RATE_LIMITS.md`
 
@@ -56,7 +56,7 @@ Three sweeps in 24 hours where the schedule asks for 48. Every sweep trips the c
 | B | `blocked = 0` on every sweep. A gzip-mangled body would classify as `non_atom_200` and put `blocked` at or near `channels_polled` | **eliminated** |
 | C | `not_modified = 0` on every sweep. No 304 has ever been served, so no validator is wedged | **eliminated** |
 | A | 3 cooldowns across 3 sweeps, all triggered on `(failed + blocked) / attempted` | **real, but downstream of E** |
-| E | 560 of 579 polls failed with 0 block signals | **root cause of the post-[029] loss** |
+| E | 560 of 579 polls failed with 0 block signals | **root cause of the post-[029] loss**, refined in section 12: the timeout value is the trigger, burst concurrency is the mechanism |
 
 The failures are not 403, not 429, not a non-Atom 200, and not 304. `RssFetcher::fetchForChannels` logs them at `app/Services/RssFetcher.php:104-111` with `'status' => 'no_response'`, which is reached only when no `Response` object came back at all: a connect timeout, a read timeout, or a transport-level error against the hardcoded 2.0s / 3.0s defaults in the constructor at `app/Services/RssFetcher.php:18-23` (`connectTimeoutSeconds: 2.0`, `timeoutSeconds: 3.0`).
 
@@ -220,3 +220,128 @@ The `[028]` gotchas still apply and are not repeated here. Three more, specific 
 | `config/services.php` | `polling.*` knobs; note that no timeout knob exists |
 | `routes/console.php` | the 30-minute sweep and its `withoutOverlapping(29)` |
 | `reference/WEBSUB_DELIVERY_INVESTIGATION.md` | the `[028]` handoff this continues |
+
+
+---
+
+# 2026-08-25, second session
+
+`poll:diagnose` deployed and run on production at 16:21 UTC. The readings overturn the working conclusion from section 3.
+
+## 12. The sweep is throttled by its own burst, not starved by its timeouts
+
+### 12.1 — Single requests from production are fast
+
+```
+UCMFSTAyvpl_yBXmq6JPfhBQ tight    status=200 bytes=27632 ms=170
+UCElurd9xTifyHtPw5QJmx_g tight    status=200 bytes=23414 ms=178
+UCeZeEFdjdL96kvWPW6T8QCA tight    status=200 bytes=30139 ms=68
+UCeXx99a0D8R27i-7m8sQOHA tight    status=200 bytes=34130 ms=321
+UC7szm7Z-YOF_HiFSY7KtYGw tight    status=200 bytes=19484 ms=210
+```
+
+Every one succeeds on the sweep's own 2.0s/3.0s budget, at 65-321ms. Production egress is not broken, and it is *faster* than the residential control in section 5. That kills the simple reading of Candidate E: the timeouts are not too tight for a request.
+
+### 12.2 — One batch of 20 starts to crack
+
+```
+pool tight    channels=20 total_ms=3027
+    19 x http_200
+     1 x ConnectionException: cURL error 28: Operation timed out after 3002 milliseconds with 0 bytes received
+
+pool generous channels=20 total_ms=1146
+    20 x http_200
+```
+
+One request in twenty exceeds 3s **with 0 bytes received**, while the same twenty all succeed in 1146ms total on a generous budget. Nothing was slow. One connection was answered with silence.
+
+### 12.3 — 193 sequential paced requests never fail
+
+The diff section fetched all 193 channels one at a time with a 150ms gap:
+
+```
+channels ok=193 failed=0 | rss entries=2830 (shorts=829)
+```
+
+Zero failures across the full channel set, minutes after the pool probe, from the same box.
+
+### 12.4 — The sweep's successes never exceed one chunk
+
+This is the datum that settles it. `RssFetcher` fetches in pools of `RSS_POOL_CHUNK` (20), ten back-to-back batches for 193 channels, with no pacing between them. Set the real sweeps beside that chunk size:
+
+| Sweep | polled | fetched | failed | duration |
+| --- | --- | --- | --- | --- |
+| 2026-08-25 13:00 | 193 | **15** | 178 | 25s |
+| 2026-08-25 06:30 | 193 | **3** | 190 | 15s |
+| 2026-08-25 00:00 | 193 | **1** | 192 | 26s |
+
+`fetched` never reaches 20. Roughly the first chunk gets through, and everything after it is answered with silence. The sweep durations agree: 15-26s across ten chunks is the shape of chunk after chunk hitting the timeout wall, not of slow but successful transfers.
+
+### 12.5 — Verdict
+
+**YouTube tarpits the burst, and the 3s timeout converts the tarpit into total failure.** Twenty simultaneous connections from one datacenter IP, repeated ten times with no gap, crosses a threshold that a paced sequential walk of the same 193 channels never approaches. The response is not a 403, not a 429, and not a slow body: it is an accepted connection that returns nothing, which is why `blockSignal` reads zero through a 97%-failure sweep and why the failures surface as `no_response`.
+
+This reframes the fix. Raising the timeout alone would buy a longer wait for the same silence. The sweep needs **pacing and lower concurrency first**, with a larger budget as the safety margin behind it. [034] is re-scoped accordingly.
+
+It also explains the pre-[021] loss more precisely than section 7 did. The old in-request fetch never burst: it fetched one group's channels on a page load. What it did instead was fail silently and often enough that the 15-entry RSS window closed over the gaps.
+
+---
+
+## 13. Ground truth: what is actually missing
+
+From the full 193-channel diff:
+
+```
+rss entries=2830 (shorts=829) | missing from db=841 (of which shorts=829)
+```
+
+**Twelve ordinary uploads are missing**, out of 2830 entries. The other 829 are Shorts, excluded by design.
+
+Two of the twelve, named:
+
+| Video | Channel | Published | Canonical |
+| --- | --- | --- | --- |
+| `6CXO8bVONug` | `UCIuDdCJXnKZb4CUzhVO-DcQ` | 2026-08-25T07:09:49+00:00 | `/watch`, not `/shorts/` |
+| `N54TzB6AiSU` | `UCwaTGE53GLGC3fDClVl_7TA` | 2026-08-25T14:36:14+00:00 | `/watch`, not `/shorts/` |
+
+Both published after the 06:30 sweep, which fetched 3 channels of 193. Both have `states=0`. Neither was ever ingested: they are absent because the sweep that should have caught them never reached their channel, not because anything deleted them.
+
+That is the proof criterion four asks for. **Never ingested, not ingested-then-deleted.**
+
+---
+
+## 14. Candidate D on production
+
+```
+Stored rows a /shorts/ href will delete on the next successful poll: 0
+user_video_states: 331
+user_video_states with no videos row: 0
+videos: 4207
+```
+
+Nothing stored is queued for deletion, no watched state is orphaned, and all 829 missing Shorts are entries the rule is *supposed* to exclude. Combined with section 6's ten-of-ten agreement between the RSS href and YouTube's own canonical, **Candidate D is eliminated.** It is not deleting ordinary uploads, and it is not the cause of any part of the observed loss. The hardening objection stands as [036].
+
+### 14.1 — The `--shorts-probe` reading from production is worthless
+
+Recorded so nobody mistakes it for evidence. On the Forge box the probe returned:
+
+```
+video         canonical seconds  ratio
+YPJZYs4vGhI   watch     ?        landscape 384x384
+YmgurXnQEh4   watch     ?        landscape 140x100
+```
+
+`canonical=watch` for every Short, no duration, and dimensions of 140x100 and 384x384, which are thumbnail and avatar sizes rather than a player. YouTube serves a datacenter IP a different page than it serves a browser — a consent or bot interstitial with no player payload — so the canonical link and `approxDurationMs` are simply absent and the regexes match unrelated markup.
+
+**Do not read that table as "these are not Shorts."** It is the probe failing, not a classification. The same probe from a residential IP returned `canonical=shorts` with real durations for all ten (section 6.1). Run `--shorts-probe` from a residential connection, or not at all.
+
+---
+
+## 15. What changed in the conclusions
+
+| Was | Now |
+| --- | --- |
+| Timeouts too tight for production egress | Egress is fast; 20-way concurrent bursts get tarpitted, and the 3s budget turns silence into failure |
+| Fix is a bigger timeout | Fix is pacing and lower concurrency, with a bigger timeout as margin |
+| Ordinary uploads may be going missing in bulk | 12 ordinary uploads missing of 2830 entries; the other 829 are Shorts, excluded by design |
+| Candidate D eliminated on local evidence | Candidate D eliminated on production evidence too |

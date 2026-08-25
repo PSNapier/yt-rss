@@ -1,5 +1,130 @@
 # Roadmap Done
 
+## [032] Diagnose missing videos since the [029] polling deploy
+
+**Status:** `done`
+**Mode:** `Manual`
+**Depends On:** [029]
+
+### Goal
+
+Find out why uploads are still going missing on production now that scheduled polling is the ingestion backbone, and separate the new-since-[029] causes from the pre-existing one the user suspects predates the WebSub work. As with [028], the output is a proven cause plus a specified fix item, not a ranked suspicion.
+
+### Scope
+
+- Read the production sweep record and decide, from data, which of the candidate mechanisms is actually firing
+- Cover both the post-[029] regression candidates and the pre-existing silent-deletion candidate
+- Confirm which specific videos are missing, by comparing a channel's live RSS against what the database holds
+- Record the cause and hand the build to a follow-up item
+- Ship the diagnosis tooling itself as `poll:diagnose`, because production readings have to be repeatable by whoever runs the fix items
+- **Not in scope:** implementing any fix. Each confirmed cause becomes its own item
+
+### Technical Notes
+
+**Context.** [028] proved YouTube's publisher does not reliably ping its own hub, and [029] made a 30-minute `channels:poll` sweep the sole automatic ingestion path. The user reports, on the post-[029] production deploy: a few new videos arrived, but videos were apparently missing this morning. Nothing about the UI visibly broke. The user also suspects a longer-standing bug, because the original [021] WebSub deploy surfaced a batch of videos that had been missing before push existed at all.
+
+That last observation matters. A backlog appearing the moment a *new* ingestion path opened means videos were absent from the database while the old path reported healthy. That is the signature of a silent drop, not of a fetch failure.
+
+**Candidate A. The cooldown latched and parked ingestion.** `PollChannelsCommand::shouldCooldown` trips when `(failed + blocked) / attempted >= POLL_BLOCK_FAILURE_RATIO` (0.5) on a sweep of at least `POLL_BLOCK_MIN_SAMPLE` (5). `PollCooldown::start` then parks every automatic fetch for `POLL_COOLDOWN_HOURS` (6). `POLL_ALERT_WEBHOOK` is unset by default, so the only outward sign is one `Log::error` line. A single bad sweep overnight is a six-hour ingestion blackout that looks exactly like "missing this morning". [029] accepted this risk explicitly. The question is whether it fired.
+
+**Candidate B. `blockSignal` false-positives on every response.** `RssFetcher::pollHeaders` sets `Accept-Encoding: gzip, deflate` by hand. Guzzle decodes transparently only when it owns that header, so a manually set value can leave the body compressed. `looksLikeAtom()` then fails its `<feed` match on all 193 channels, every 200 is classified `non_atom_200`, the ratio is 1.0, and the cooldown trips on the first sweep and re-trips every six hours indefinitely. This is new in [029] and would produce both reported symptoms at once. Cheap to falsify: `blocked` would sit at or near `channels_polled` on every row of `poll_sweeps`.
+
+**Candidate C. Conditional-GET validators wedged on a stale response.** Also new in [029]. `rss_etag` and `rss_last_modified` are stored after a successful ingest and replayed as `If-None-Match` / `If-Modified-Since`. A 304 touches `last_fetched_at` and ingests nothing. If YouTube's edge answers 304 against a validator captured from a stale edge node, that channel is frozen at the videos it held when the validator was stored, and every health signal reads perfect: zero failures, zero blocks, zero staleness. `force: true` does not help, because force bypasses the TTL, not the validators, so `GroupFeedController::refresh` cannot break out of it either. This candidate best matches "missing videos with nothing visibly wrong", and it is the one [028]'s evidence gotchas would have missed again.
+
+**Candidate D. Silent Shorts deletion, pre-existing.** `RssFetcher::ingest()` hard-deletes the `videos` row and its `user_video_states` rows for any entry whose Atom `alternate` href is under `/shorts/`, with no log line and no counter. `videos:prune-shorts` does the same across the whole table using the watch-page canonical URL from `YoutubeShortsDetector`. YouTube canonicalises short-form and vertical uploads under `/shorts/` liberally, so ordinary uploads can be classified as Shorts and destroyed, taking the user's watched state with them. This predates WebSub entirely and is the strongest explanation for the "this was broken before" instinct. It is also self-concealing: the video reappears on a later sweep if the href changes, then vanishes again.
+
+**Candidate E. Timeouts tuned for a page request, not a sweep.** `RssFetcher`'s 2.0s connect and 3.0s total defaults date from when fetching happened inside an Inertia deferred prop. A sweep has no such constraint, and every timeout counts as `failed`, feeding Candidate A's ratio.
+
+**Discriminating between them.** Cheap, mostly one reading each, run on production:
+
+| Reading | How | Tells you |
+| --- | --- | --- |
+| Cooldown state and staleness | `php artisan poll:health` | Candidate A directly, and rules Candidate C in if everything reads green while videos are missing |
+| Sweep history | `select started_at, channels_polled, fetched, not_modified, failed, blocked, cooldown_triggered from poll_sweeps order by started_at desc limit 48;` | A vs B vs C. `blocked` near `channels_polled` is B. `not_modified` near `channels_polled` with `fetched` at 0 across a full day is C. One spike then skipped sweeps is A |
+| Cooldown log lines | `/bin/grep 'Polling cooldown started' storage/logs/laravel.log` | When A fired, and the reason recorded |
+| Validator bypass | Null `rss_etag` and `rss_last_modified` for one known-missing channel, then `php artisan channels:poll --limit=1 --ignore-cooldown` | Confirms C if the missing videos land immediately |
+| Ground truth per channel | Fetch that channel's RSS by hand and diff the 15 `yt:videoId` values against `videos` | Names exactly which uploads are absent, and whether they are short-form |
+| Deletion churn | Look for a known-missing video id in `user_video_states` | D leaves no row behind, so a video the user had marked watched returning unwatched is a tell |
+
+The [028] evidence gotchas still apply: an empty `laravel.log` proves nothing, `grep -c` with zero matches exits non-zero and silently breaks an `&&` chain, and `/bin/grep` is the working path on the Forge box.
+
+**Production readings, 2026-08-25 (~13:00-19:00 UTC).** `poll:health` plus the last 48 `poll_sweeps` rows:
+
+```
+Cooldown: ACTIVE until 2026-08-25T19:00:29+00:00 (178 of 193 requests failed (0 of them block signals)).
+Staleness: 193 channels, max 1464 min, median 1463 min, never fetched 0.
+Last 24h: 3 sweeps, 579 polls, 560 fetch failures, 0 block signals, 0 cap hits, 3 cooldowns.
+All rss_url values are canonical.
+2026-08-25 13:00:04 polled=193 fetched=15 notmod=0 failed=178 blocked=0 cooldown=1
+2026-08-25 06:30:03 polled=193 fetched=3  notmod=0 failed=190 blocked=0 cooldown=1
+2026-08-25 00:00:13 polled=193 fetched=1  notmod=0 failed=192 blocked=0 cooldown=1
+```
+
+| Candidate | Reading | Verdict |
+| --- | --- | --- |
+| B, gzip breaks `looksLikeAtom` | `blocked = 0` on every sweep | **Eliminated** |
+| C, validators wedged | `not_modified = 0` on every sweep, so no 304 has ever been served | **Eliminated** |
+| A, cooldown latched | 3 cooldowns across 3 sweeps | **Real, but a symptom** |
+| E, timeouts | 560 of 579 polls failed with 0 block signals | **Leading root cause** |
+
+The failures are not 403, 429, or a non-Atom 200, and they are not 304. `RssFetcher` logs them with `'status' => 'no_response'`, meaning no `Response` object came back at all: a connect or read timeout, or a transport-level error, against the 2.0s connect / 3.0s total defaults.
+
+Two things this changes about the item:
+
+- **A is downstream of E, not a separate cause.** Every sweep trips the ratio, so polling runs 3 times a day instead of 48. The [029] note that a cooldown on non-block failures is "the safe direction" is falsified in practice: it converts a partial fetch problem into near-total ingestion loss. The cooldown should distinguish block signals from ordinary failures.
+- **The `no_response` log carries no exception message**, so the failure mode cannot be read back from `laravel.log`. That is the gap to close first, alongside the timing question of whether generous timeouts succeed where 2.0/3.0 fail. If both tight and generous timeouts fail, the cause is egress-level (DNS, TLS, or an IP-level refusal that never reaches HTTP) which is exactly why block detection reads zero.
+
+**Candidate D is untouched by these readings.** It deletes rows after a *successful* fetch, so it is orthogonal to the failure storm and still needs its own check.
+
+**Divergence from plan, 2026-08-25.** Two things changed while executing this item.
+
+*The diagnosis tooling shipped as code.* `poll:diagnose` (`app/Console/Commands/DiagnosePollingCommand.php`) replaces the throwaway tinker script the plan assumed. `php artisan tinker <file>` drops into an interactive shell after including the file, which is useless over a non-interactive ssh, and the readings this item needs are the same readings every fix item ([033] through [036]) will need to verify itself. Five sections: sweep history, single-fetch timing tight against generous with the exception class captured, pool timing in the sweep's real concurrent shape, a live-RSS-against-`videos` diff naming every absent upload, and the deletion tells. Read-only, covered by `tests/Feature/DiagnosePollingCommandTest.php`. So "this item builds nothing" is no longer true: it builds the instrument, not the fix.
+
+*Candidate D is eliminated on local evidence, pending a production confirmation.* Ten `/shorts/`-href entries checked against their watch pages agree with YouTube's own canonical in ten of ten, all 61 seconds or under, nine of ten portrait. A scan of 236 live `/shorts/` entries found zero currently stored in `videos`, so nothing is queued for silent deletion. The design objection survives as [036]: the rule deletes rather than flags, takes `user_video_states` with it, and leaves no trace, so a future misfire would be invisible.
+
+**Production readings, 16:21 UTC, after `poll:diagnose` deployed.** These overturn the working conclusion above, and are written up in full as sections 12 through 15 of `reference/POLLING_LOSS_INVESTIGATION.md`.
+
+*Candidate E is real but was framed wrongly.* Single requests from the Forge box succeed on the sweep's own 2.0s/3.0s budget at 65-321ms, faster than the residential control. One batch of 20 concurrent loses 1 request to `cURL error 28: Operation timed out after 3002 milliseconds with 0 bytes received`, while the same 20 all pass on a generous budget in 1146ms. All 193 channels fetched sequentially with a 150ms gap: zero failures. The decisive datum is that `fetched` on the three real sweeps reads 15, 3, and 1 against a pool chunk of 20 — roughly the first chunk gets through and everything after it is answered with silence. **YouTube tarpits the 20-way burst, and the 3s budget converts that silence into a failure.** A bigger timeout alone buys a longer wait for the same silence, which is why [034] is re-scoped from timeouts to pacing.
+
+*The loss is much smaller than the failure rate suggests.* Of 2830 live RSS entries, 841 are absent from `videos` and 829 of those are Shorts excluded by design. **Twelve ordinary uploads are missing.** Named: `6CXO8bVONug` on `UCIuDdCJXnKZb4CUzhVO-DcQ`, published 2026-08-25T07:09:49+00:00, canonical `/watch`; and `N54TzB6AiSU` on `UCwaTGE53GLGC3fDClVl_7TA`, published 2026-08-25T14:36:14+00:00. Both `states=0`, both published after a sweep that reached 3 channels of 193. Never ingested, not ingested-then-deleted.
+
+*Candidate D eliminated on production evidence.* Zero stored rows queued for deletion, zero orphaned `user_video_states` against 331 rows and 4207 videos.
+
+*`--shorts-probe` is unusable from the Forge box.* It returned `canonical=watch` with no duration and 140x100 dimensions for every Short, because YouTube serves a datacenter IP an interstitial with no player payload. That table is the probe failing, not a classification, and must not be read as evidence. Fixing or gating it belongs with [036].
+
+```mermaid
+flowchart TD
+    A[Videos missing on production] --> B[poll:health and poll_sweeps]
+    B --> C{Sweep shape}
+    C -->|blocked near polled| D[Candidate B: gzip breaks looksLikeAtom]
+    C -->|one spike then skipped sweeps| E[Candidate A: cooldown latched]
+    C -->|not_modified near polled, fetched 0| F[Candidate C: validators wedged]
+    C -->|all green, videos still absent| G[Diff live RSS against videos table]
+    G -->|absent ids are short-form| H[Candidate D: silent Shorts deletion]
+    G -->|absent ids are ordinary| F
+    D --> I[Write fix item]
+    E --> I
+    F --> I
+    H --> I
+```
+
+### Acceptance Criteria
+
+- [x] The production sweep record is read, and Candidates A, B, C, and E are each confirmed or eliminated from `poll_sweeps` data rather than from reasoning
+- [x] It is established whether a cooldown has fired since the [029] deploy, when, and for what recorded reason
+- [x] At least one specific missing video is identified by id, with its channel, publish time, and whether YouTube canonicalises it under `/shorts/`
+- [x] A live RSS fetch for that channel is diffed against the `videos` table, proving whether the entry was never ingested or was ingested and later deleted
+- [x] Candidate D is confirmed or eliminated by checking whether missing ids are short-form and whether their `user_video_states` rows are gone
+- [x] Separate verdicts are recorded for the post-[029] regression and for the pre-existing loss observed at the [021] deploy, since they may be different causes
+- [x] Findings are written to `reference/POLLING_LOSS_INVESTIGATION.md` with the reproduction commands and the readings they returned
+- [x] Each confirmed cause is specified as a follow-up roadmap item, [033] through [036]
+
+### Verification (no automated tests)
+
+This is a diagnosis, so there is nothing to assert. Every criterion is verified by direct observation against production, with the commands recorded in the reference document. [028] is the precedent: a suite mocking the RSS endpoint stayed green through a twenty-hour outage, because every in-process signal read healthy. Candidate C has that same property, which is why it needs a production reading rather than a test.
+
+---
+
 ## [029] Make scheduled polling the ingestion backbone
 
 **Status:** `done`
