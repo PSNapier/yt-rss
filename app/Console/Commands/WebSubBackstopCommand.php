@@ -216,6 +216,10 @@ class WebSubBackstopCommand extends Command
     /**
      * Upload span and count per channel id, in one grouped query per chunk.
      *
+     * Short-form rows are excluded: before [036] they were deleted rather than stored,
+     * so counting them now would shrink every cadence estimate and make the silence
+     * threshold fire differently than it ever has.
+     *
      * @param  array<int, int>  $channelIds
      * @return array<int, array{latest: CarbonImmutable, earliest: CarbonImmutable, count: int}>
      */
@@ -228,6 +232,7 @@ class WebSubBackstopCommand extends Command
         return Video::query()
             ->selectRaw('channel_id, max(published_at) as latest_published_at, min(published_at) as earliest_published_at, count(*) as upload_count')
             ->whereIn('channel_id', $channelIds)
+            ->where('is_short', false)
             ->groupBy('channel_id')
             ->get()
             ->mapWithKeys(fn ($row) => [

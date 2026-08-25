@@ -36,15 +36,54 @@ test('it names a video that is in the live feed but not in the database', functi
         ->assertSuccessful();
 });
 
-test('it lists a stored video the shorts rule will delete on the next poll', function () {
+test('it lists a stored video the shorts rule will flag on the next poll', function () {
     Http::fake(['*' => Http::response(diagnoseFeed('doomedVid01', 'https://www.youtube.com/shorts/doomedVid01'), 200)]);
 
     $channel = Channel::factory()->create();
     Video::factory()->create(['channel_id' => $channel->id, 'youtube_video_id' => 'doomedVid01']);
 
     $this->artisan('poll:diagnose --timing=1 --pool=1 --sleep=0')
-        ->expectsOutputToContain('will delete on the next successful poll: 1')
-        ->expectsOutputToContain('doomedVid01')
+        ->expectsOutputToContain('will flag on the next successful poll: 1')
+        ->assertSuccessful();
+});
+
+test('the shorts probe reports a datacenter interstitial as unclassified', function () {
+    Http::fake([
+        '*feeds/videos.xml*' => Http::response(
+            diagnoseFeed('probeVid001', 'https://www.youtube.com/shorts/probeVid001'),
+            200
+        ),
+        // What a datacenter IP is served: no player payload, so nothing to classify on.
+        '*watch?v=probeVid001*' => Http::response(
+            '<html><head><link rel="canonical" href="https://www.youtube.com/watch?v=probeVid001"></head><body></body></html>',
+            200
+        ),
+    ]);
+
+    Channel::factory()->create();
+
+    $this->artisan('poll:diagnose --timing=1 --pool=1 --sleep=0 --shorts-probe=1')
+        ->expectsOutputToContain('unclassified')
+        ->assertSuccessful();
+});
+
+test('the shorts probe classifies a page that carries a player payload', function () {
+    Http::fake([
+        '*feeds/videos.xml*' => Http::response(
+            diagnoseFeed('probeVid002', 'https://www.youtube.com/shorts/probeVid002'),
+            200
+        ),
+        '*watch?v=probeVid002*' => Http::response(
+            '<html><head><link rel="canonical" href="https://www.youtube.com/shorts/probeVid002"></head>'
+            .'<body>"approxDurationMs":"58000","width":1080,"height":1920</body></html>',
+            200
+        ),
+    ]);
+
+    Channel::factory()->create();
+
+    $this->artisan('poll:diagnose --timing=1 --pool=1 --sleep=0 --shorts-probe=1')
+        ->expectsOutputToContain('shorts')
         ->assertSuccessful();
 });
 

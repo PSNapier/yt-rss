@@ -109,11 +109,12 @@ class PollHealthCommand extends Command
                 DB::raw('coalesce(sum(blocked), 0) as blocked'),
                 DB::raw('coalesce(sum(cap_hit), 0) as cap_hits'),
                 DB::raw('coalesce(sum(cooldown_triggered), 0) as cooldowns'),
+                DB::raw('coalesce(sum(failure_alert), 0) as failure_alerts'),
             ])
             ->first();
 
         $this->line(sprintf(
-            'Last %dh: %d sweeps, %d polls, %d fetch failures, %d block signals, %d cap hits, %d cooldowns.',
+            'Last %dh: %d sweeps, %d polls, %d fetch failures, %d block signals, %d cap hits, %d cooldowns, %d failure storms.',
             $hours,
             (int) $row->sweeps,
             (int) $row->polled,
@@ -121,6 +122,51 @@ class PollHealthCommand extends Command
             (int) $row->blocked,
             (int) $row->cap_hits,
             (int) $row->cooldowns,
+            (int) $row->failure_alerts,
+        ));
+
+        $this->reportFailureCategories($since);
+    }
+
+    /**
+     * A raw failure count says a storm happened; the categories say what kind, which
+     * is the difference between "raise the timeouts" and "we are being blocked".
+     */
+    protected function reportFailureCategories(CarbonImmutable $since): void
+    {
+        $totals = [];
+
+        PollSweep::query()
+            ->where('started_at', '>=', $since)
+            ->whereNotNull('failure_categories')
+            ->orderBy('id')
+            ->chunkById(500, function ($sweeps) use (&$totals): void {
+                foreach ($sweeps as $sweep) {
+                    foreach ($sweep->failure_categories ?? [] as $category => $count) {
+                        $totals[$category] = ($totals[$category] ?? 0) + (int) $count;
+                    }
+                }
+            });
+
+        if ($totals === []) {
+            $this->line('Failure categories: none recorded.');
+
+            return;
+        }
+
+        arsort($totals);
+
+        $dominant = array_key_first($totals);
+
+        $breakdown = collect($totals)
+            ->map(fn (int $count, string $category) => "{$category} {$count}")
+            ->implode(', ');
+
+        $this->line(sprintf(
+            'Failure categories: %s. Dominant: %s (%d).',
+            $breakdown,
+            $dominant,
+            $totals[$dominant],
         ));
     }
 

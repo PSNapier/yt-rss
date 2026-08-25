@@ -40,11 +40,25 @@ return [
         'rss_cache_ttl' => env('RSS_CACHE_TTL', 30),
         /** Concurrent RSS URLs per Http::pool batch (whole group can still be large; lowers timeouts / 429s). */
         'rss_pool_chunk' => (int) env('RSS_POOL_CHUNK', 20),
+        /** Connect timeout for a feed load, where a user is waiting on the response. */
+        'rss_connect_timeout' => (float) env('RSS_CONNECT_TIMEOUT', 2.0),
+        /** Total timeout for a feed load. [032] measured single requests succeeding well inside this. */
+        'rss_timeout' => (float) env('RSS_TIMEOUT', 3.0),
     ],
 
     'polling' => [
+        /** Concurrent requests per pool batch in a sweep. [032] measured one batch of 20 already losing a request to silence. */
+        'pool_chunk' => (int) env('POLL_POOL_CHUNK', 5),
+        /** Pause between pool batches. 193 channels fetched with a 150ms gap lost nothing; 10 ungapped batches of 20 lost 92%. */
+        'inter_chunk_delay_ms' => (int) env('POLL_INTER_CHUNK_DELAY_MS', 500),
+        /** Connect timeout for sweep requests: margin behind the pacing, not the fix. */
+        'connect_timeout' => (float) env('POLL_CONNECT_TIMEOUT', 5.0),
+        /** Total timeout for sweep requests. Nobody is waiting on a sweep, so it can afford to be patient. */
+        'timeout' => (float) env('POLL_TIMEOUT', 10.0),
         /** Safety cap on channels polled per sweep; a no-op at current scale, and a signal that sharding is due if ever hit. */
         'max_per_sweep' => (int) env('POLL_MAX_PER_SWEEP', 1000),
+        /** Share of a sweep's requests that must fail for non-block reasons before a failure storm is declared. Never pauses polling. */
+        'failure_alert_ratio' => (float) env('POLL_FAILURE_ALERT_RATIO', 0.5),
         /** Share of a sweep's requests that must look blocked before polling pauses. */
         'block_failure_ratio' => (float) env('POLL_BLOCK_FAILURE_RATIO', 0.5),
         /** Below this many requests a sweep is too small for the ratio to mean anything. */
@@ -55,7 +69,7 @@ return [
         'health_window_hours' => (int) env('POLL_HEALTH_WINDOW_HOURS', 24),
         /** How long sweep history is kept for the health report. */
         'sweep_history_days' => (int) env('POLL_SWEEP_HISTORY_DAYS', 30),
-        /** Webhook posted to when a cooldown starts; null disables webhook alerting (logs still fire). */
+        /** Webhook posted to on a cooldown or a failure storm; null disables webhook alerting (logs still fire). */
         'alert_webhook' => env('POLL_ALERT_WEBHOOK'),
     ],
 

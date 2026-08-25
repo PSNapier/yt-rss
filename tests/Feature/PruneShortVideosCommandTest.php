@@ -10,13 +10,12 @@ use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
 
-test('prune-shorts removes Shorts and related user video states', function () {
+test('prune-shorts flags Shorts instead of deleting them', function () {
     $channel = Channel::factory()->create();
     $user = User::factory()->create();
     $short = Video::factory()->for($channel)->create(['youtube_video_id' => 'ssDbeb9vB6g']);
     $long = Video::factory()->for($channel)->create(['youtube_video_id' => '1PZKfIyrYOc']);
     UserVideoState::factory()->for($user)->create(['youtube_video_id' => 'ssDbeb9vB6g']);
-    UserVideoState::factory()->for($user)->create(['youtube_video_id' => '1PZKfIyrYOc']);
 
     Http::fake([
         '*youtube.com/watch?v=ssDbeb9vB6g*' => Http::response(
@@ -31,8 +30,21 @@ test('prune-shorts removes Shorts and related user video states', function () {
 
     Artisan::call('videos:prune-shorts', ['--sleep' => 0]);
 
-    expect(Video::query()->whereKey($short->id)->exists())->toBeFalse();
-    expect(Video::query()->whereKey($long->id)->exists())->toBeTrue();
-    expect(UserVideoState::query()->where('youtube_video_id', 'ssDbeb9vB6g')->exists())->toBeFalse();
-    expect(UserVideoState::query()->where('youtube_video_id', '1PZKfIyrYOc')->exists())->toBeTrue();
+    expect($short->fresh()->is_short)->toBeTrue()
+        ->and($long->fresh()->is_short)->toBeFalse()
+        ->and(UserVideoState::query()->where('youtube_video_id', 'ssDbeb9vB6g')->exists())->toBeTrue();
+});
+
+test('prune-shorts skips videos already flagged', function () {
+    $channel = Channel::factory()->create();
+    Video::factory()->for($channel)->create([
+        'youtube_video_id' => 'ssDbeb9vB6g',
+        'is_short' => true,
+    ]);
+
+    Http::fake(['*' => Http::response('<head></head>', 200)]);
+
+    Artisan::call('videos:prune-shorts', ['--sleep' => 0]);
+
+    Http::assertNothingSent();
 });

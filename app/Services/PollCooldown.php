@@ -4,8 +4,6 @@ namespace App\Services;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 
 /**
  * A YouTube RSS block is IP-scoped and lasts hours to about a day. Polling through
@@ -17,6 +15,8 @@ class PollCooldown
     protected const KEY = 'poll:cooldown_until';
 
     protected const REASON_KEY = 'poll:cooldown_reason';
+
+    public function __construct(protected PollAlert $alert) {}
 
     public function isActive(): bool
     {
@@ -53,9 +53,10 @@ class PollCooldown
         Cache::put(self::KEY, $until->toIso8601String(), $expiry);
         Cache::put(self::REASON_KEY, $reason, $expiry);
 
-        Log::error('Polling cooldown started', ['reason' => $reason, 'until' => $until->toIso8601String()]);
-
-        $this->alert($reason, $until);
+        $this->alert->raise('Polling cooldown started', [
+            'reason' => $reason,
+            'until' => $until->toIso8601String(),
+        ]);
 
         return $until;
     }
@@ -64,22 +65,5 @@ class PollCooldown
     {
         Cache::forget(self::KEY);
         Cache::forget(self::REASON_KEY);
-    }
-
-    protected function alert(string $reason, CarbonImmutable $until): void
-    {
-        $webhook = config('services.polling.alert_webhook');
-
-        if (! is_string($webhook) || $webhook === '') {
-            return;
-        }
-
-        try {
-            Http::timeout(5)->post($webhook, [
-                'text' => "YouTube RSS polling paused until {$until->toIso8601String()}: {$reason}",
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('Polling cooldown alert failed', ['error' => $e->getMessage()]);
-        }
     }
 }

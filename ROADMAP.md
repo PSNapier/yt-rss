@@ -626,44 +626,6 @@ The audit is the constraint, not the quota: reported waits run from weeks to sev
 
 ---
 
-## [033] Record the transport failure behind a failed poll
-
-**Status:** `next`
-**Mode:** `Auto`
-**Depends On:** [032]
-
-### Goal
-
-Make a failed RSS poll say what actually went wrong. Today `RssFetcher` logs the literal string `no_response` for every `Response`-less outcome, so DNS failure, TLS handshake failure, connect timeout, and read timeout are indistinguishable after the fact. On production this blind spot turned 560 failures in 24 hours into an unreadable log, and forced [032] to build a bespoke command to learn anything at all.
-
-### Scope
-
-- Catch the transport exception in `RssFetcher::fetchForChannels` and log its class and message alongside the channel
-- Classify the outcome coarsely enough to count: connect timeout, read timeout, DNS, TLS, other
-- Surface the classification in `poll:health` and in the sweep record, so the shape of a failure storm is readable without a log dive
-- **Not in scope:** changing any timeout value. That is [034]
-
-### Technical Notes
-
-`Http::pool` returns the `Throwable` in the response slot rather than throwing, which is why `$resp instanceof Response` is false and the current code falls through to `'status' => 'no_response'` at `app/Services/RssFetcher.php:104-111`. The exception is already in hand and is simply discarded. Guzzle raises `ConnectException` for connect-phase failures, DNS and TLS included and distinguishable by the cURL errno in the message, and `RequestException` for a read timeout.
-
-This is the cheapest item of the four and every other one is easier to verify once it lands, so build it first.
-
-### Acceptance Criteria
-
-- [ ] A poll that fails without a response logs the exception class and message, not the bare string `no_response`
-- [ ] Failures are counted by coarse category, and the category counts survive into the sweep record
-- [ ] `poll:health` reports the dominant failure category over its window
-- [ ] Nothing about the success path or the block-signal path changes
-
-### Tests
-
-- [ ] `tests/Feature/RssFetcherTest.php` - a connect exception is logged with its class and message
-- [ ] `tests/Feature/RssFetcherTest.php` - a read timeout and a connect timeout land in different categories
-- [ ] `tests/Feature/PollHealthCommandTest.php` - the health report names the dominant failure category
-
----
-
 ## [034] Pace the sweep: concurrency, spacing, then timeouts
 
 **Status:** `next`
@@ -701,111 +663,31 @@ flowchart LR
     E --> F[Measure with poll:diagnose]
 ```
 
+**Shipped.** `RssFetcher::forSweep()` returns a copy on the sweep budget, and `channels:poll` is the only caller: a feed load keeps the impatient request-path budget, since a user is waiting on it. Defaults, all env-overridable:
+
+| Setting | Request path | Sweep |
+| --- | --- | --- |
+| Pool chunk | `RSS_POOL_CHUNK` 20 | `POLL_POOL_CHUNK` 5 |
+| Gap between batches | none | `POLL_INTER_CHUNK_DELAY_MS` 500 |
+| Connect timeout | `RSS_CONNECT_TIMEOUT` 2.0 | `POLL_CONNECT_TIMEOUT` 5.0 |
+| Total timeout | `RSS_TIMEOUT` 3.0 | `POLL_TIMEOUT` 10.0 |
+
+At 193 channels that is 39 batches and roughly 19 seconds of deliberate pausing on top of request time, against the 25-second sweep that lost 92%. The gap is taken before each batch after the first, never after the last, and uses `Illuminate\Support\Sleep` so tests assert the pacing without waiting for it.
+
+`poll:diagnose` now reads the sweep budget from config rather than the copied `TIGHT = [2.0, 3.0]` constant, and `--pool` defaults to the configured chunk, so the diagnosis measures whatever the sweep is actually set to.
+
+**Still unverified:** the two production criteria below. Deploy, then run `poll:diagnose` and read `poll_sweeps` over consecutive real sweeps.
+
 ### Acceptance Criteria
 
-- [ ] Pool chunk size and an inter-chunk delay are configurable, and the sweep uses them
-- [ ] Connect and total timeouts come from config, with the sweep and the request path able to differ
+- [x] Pool chunk size and an inter-chunk delay are configurable, and the sweep uses them
+- [x] Connect and total timeouts come from config, with the sweep and the request path able to differ
 - [ ] `poll:diagnose` run on production after the change shows a full sweep completing with failures near zero
 - [ ] `poll_sweeps` shows `fetched` well past a single chunk's worth on consecutive real sweeps
 - [ ] If pacing does not fix it, the reading is recorded in `reference/POLLING_LOSS_INVESTIGATION.md` and this item is re-scoped rather than closed
 
 ### Tests
 
-- [ ] `tests/Feature/RssFetcherTest.php` - the configured chunk size determines the pool batches
-- [ ] `tests/Feature/RssFetcherTest.php` - configured timeouts reach the outbound request
-- [ ] `tests/Feature/ChannelsPollCommandTest.php` - the sweep uses the sweep budget, not the request-path budget
-
----
-
-## [035] Cool down on block signals, not on ordinary failures
-
-**Status:** `next`
-**Mode:** `Auto`
-**Depends On:** [032], [033]
-
-### Goal
-
-Stop a transport problem from parking ingestion for six hours at a time. `PollChannelsCommand::shouldCooldown` counts `failed + blocked` against its ratio, so a mechanism built for IP blocks fires on timeouts. On production this turned a partial fetch failure into 3 sweeps a day where the schedule asks for 48, which is the difference between degraded ingestion and near-total loss.
-
-### Scope
-
-- Trip the cooldown on block signals, not on the combined bad-response count
-- Keep a separate, louder response to a sweep that fails wholesale for non-block reasons: it is a real emergency, it just is not a block, and parking for six hours is the wrong remedy
-- Make the cooldown visible without a log dive, since `POLL_ALERT_WEBHOOK` is unset by default and one `Log::error` line is the only outward sign today
-- **Not in scope:** the timeout values themselves ([034])
-
-### Technical Notes
-
-[029] recorded cooling down on non-block failures as "the safe direction", on the reasoning that a failure storm might be a block the detector missed. Production falsified that: the failure mode it actually caught was not a block, and the remedy made the symptom far worse than the disease. `blockSignal` already distinguishes the two cleanly, on 403, 429, and a non-Atom 200, and [032] confirmed it reads zero through a 97%-failure sweep.
-
-The asymmetry worth preserving: a block is all-or-nothing and polling through it may extend it, so backing off is correct. A timeout storm is the opposite, where backing off guarantees loss and fixes nothing.
-
-```mermaid
-flowchart TD
-    A[Sweep finishes] --> B{Block signals over ratio?}
-    B -->|yes| C[Cooldown: parking is the correct remedy]
-    B -->|no| D{Ordinary failures over ratio?}
-    D -->|yes| E[Alert loudly, keep polling]
-    D -->|no| F[Normal sweep]
-```
-
-### Acceptance Criteria
-
-- [ ] The cooldown trips on block signals alone
-- [ ] A sweep that fails wholesale for non-block reasons keeps polling and raises a distinct, loud signal
-- [ ] The two conditions are distinguishable in `poll_sweeps` and in `poll:health` after the fact
-- [ ] A cooldown, once tripped, is still visible without reading `laravel.log`
-
-### Tests
-
-- [ ] `tests/Feature/ChannelsPollCommandTest.php` - a sweep of transport failures does not trip the cooldown
-- [ ] `tests/Feature/ChannelsPollCommandTest.php` - a sweep of block signals still does
-- [ ] `tests/Feature/ChannelsPollCommandTest.php` - a wholesale non-block failure raises the distinct signal
-- [ ] `tests/Feature/PollHealthCommandTest.php` - the two conditions read differently in the health report
-
----
-
-## [036] Flag Shorts instead of destroying them
-
-**Status:** `next`
-**Mode:** `Auto`
-**Depends On:** [032]
-
-### Goal
-
-Make Shorts filtering reversible and observable. `RssFetcher::ingest` currently hard-deletes the `videos` row and every attached `user_video_states` row for any entry whose Atom `alternate` href is under `/shorts/`, with no log line and no counter. [032] found no false positive in a ten-video sample and no stored row queued for deletion, so this is hardening rather than a bug fix, but a rule that destroys user data silently has no way to tell anyone when it is wrong.
-
-### Scope
-
-- Mark a video as short-form rather than deleting it, and filter it out of the feed at read time
-- Keep `user_video_states` intact, so a misclassification never costs the user their watched state
-- Count and log what the rule classifies, so a spike is visible
-- Reconcile `videos:prune-shorts` with the new model, since it does the same deletion across the whole table using the watch-page canonical
-- Fix or gate `poll:diagnose --shorts-probe`, which is unusable from a datacenter IP
-- **Not in scope:** a user-facing setting for showing Shorts. Worth having, but a separate item
-
-### Technical Notes
-
-The deletion sits at `app/Services/RssFetcher.php:275-280`. `PruneShortVideosCommand` performs the equivalent via `YoutubeShortsDetector::isShortByWatchPage`, and is not scheduled: it only runs by hand.
-
-Evidence from [032] section 6: ten of ten sampled `/shorts/`-href entries were genuinely short-form, all 61 seconds or under and nine of ten portrait, and a scan of 236 live `/shorts/` entries found zero currently stored. The RSS href tracks YouTube's own canonical closely.
-
-`poll:diagnose --shorts-probe` is the tool that would catch a misfire, and it does not work where it is most needed. From the Forge box it returned `canonical=watch` with no duration and 140x100 dimensions for all ten Shorts, because YouTube serves a datacenter IP an interstitial with no player payload. From a residential IP the same probe returned `canonical=shorts` with real durations for all ten. Either make it detect the interstitial and say so, or refuse to run outside a context where it works. Silently printing a wrong classification is worse than printing nothing.
-
-The residual risk is the boundary, not the accuracy. YouTube's Shorts ceiling is three minutes, so a 2:50 vertical upload is classified as a Short and deleted today, and nothing in the system records that it happened. A flag turns that from data loss into a filter the user could later disagree with.
-
-### Acceptance Criteria
-
-- [ ] A short-form entry is stored and flagged, not deleted
-- [ ] Feed reads exclude flagged videos
-- [ ] `user_video_states` survives a video being flagged
-- [ ] The number of entries flagged per sweep is counted and visible
-- [ ] `videos:prune-shorts` flags rather than deletes, and its existing behaviour is either migrated or documented as superseded
-- [ ] `poll:diagnose --shorts-probe` either detects the interstitial and reports it as unclassified, or refuses to run where it cannot work
-
-### Tests
-
-- [ ] `tests/Feature/RssFetcherTest.php` - a `/shorts/` entry is stored with the flag set
-- [ ] `tests/Feature/RssFetcherTest.php` - an existing video and its watched state survive being reclassified as short-form
-- [ ] `tests/Feature/GroupFeedTest.php` - flagged videos do not appear in a feed
-- [ ] `tests/Feature/PruneShortVideosCommandTest.php` - the command flags instead of deleting
+- [x] `tests/Feature/RssFetcherTest.php` - the configured chunk size determines the pool batches
+- [x] `tests/Feature/RssFetcherTest.php` - configured timeouts reach the outbound request
+- [x] `tests/Feature/ChannelsPollCommandTest.php` - the sweep uses the sweep budget, not the request-path budget

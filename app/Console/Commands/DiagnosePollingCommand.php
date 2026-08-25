@@ -25,8 +25,8 @@ use Throwable;
  */
 #[Signature('poll:diagnose
     {--sweeps=20 : Rows of sweep history to print}
-    {--timing=5 : Channels to time tight against generous timeouts}
-    {--pool=20 : Channels in the concurrent pool probe, matching a real sweep batch}
+    {--timing=5 : Channels to time on the sweep budget against generous timeouts}
+    {--pool= : Channels in the concurrent pool probe; defaults to the configured sweep batch}
     {--skip-diff : Skip the live-RSS-against-videos diff, which fetches every channel}
     {--limit= : Cap the channels included in the diff}
     {--list=80 : Missing entries to print}
@@ -35,11 +35,22 @@ use Throwable;
 #[Description('Diagnose why polling is losing videos: transport failures, timeout headroom, and a live RSS diff')]
 class DiagnosePollingCommand extends Command
 {
-    /** Timeouts the sweep actually uses, from the `RssFetcher` constructor defaults. */
-    protected const TIGHT = [2.0, 3.0];
-
     /** Timeouts with enough headroom that a failure means something other than slowness. */
     protected const GENEROUS = [10.0, 30.0];
+
+    /**
+     * The budget a real sweep runs on, read from config rather than copied, so a
+     * change to the pacing shows up in the diagnosis instead of quietly diverging.
+     *
+     * @return array{0: float, 1: float}
+     */
+    protected function sweepBudget(): array
+    {
+        return [
+            (float) config('services.polling.connect_timeout', 5.0),
+            (float) config('services.polling.timeout', 10.0),
+        ];
+    }
 
     public function handle(): int
     {
@@ -113,10 +124,10 @@ class DiagnosePollingCommand extends Command
         }
 
         $this->newLine();
-        $this->components->info('Single-fetch timing, tight (the sweep budget) against generous');
+        $this->components->info('Single-fetch timing, the sweep budget against generous');
 
         foreach ($channels as $channel) {
-            foreach (['tight' => self::TIGHT, 'generous' => self::GENEROUS] as $label => [$connect, $total]) {
+            foreach (['sweep' => $this->sweepBudget(), 'generous' => self::GENEROUS] as $label => [$connect, $total]) {
                 $startedAt = microtime(true);
 
                 try {
@@ -154,7 +165,7 @@ class DiagnosePollingCommand extends Command
      */
     protected function reportPoolTiming(): void
     {
-        $channels = $this->channels(max(1, (int) $this->option('pool')));
+        $channels = $this->channels(max(1, (int) ($this->option('pool') ?: config('services.polling.pool_chunk', 5))));
 
         if ($channels->isEmpty()) {
             return;
@@ -163,7 +174,7 @@ class DiagnosePollingCommand extends Command
         $this->newLine();
         $this->components->info('Pool timing, the real sweep shape');
 
-        foreach (['tight' => self::TIGHT, 'generous' => self::GENEROUS] as $label => [$connect, $total]) {
+        foreach (['sweep' => $this->sweepBudget(), 'generous' => self::GENEROUS] as $label => [$connect, $total]) {
             $startedAt = microtime(true);
 
             $responses = Http::pool(fn (Pool $pool) => $channels->map(
@@ -245,9 +256,9 @@ class DiagnosePollingCommand extends Command
 
                 $stored = Video::query()->where('youtube_video_id', $videoId)->exists();
 
-                // A stored row whose href is now under /shorts/ is deleted by
-                // `RssFetcher::ingest` on the next successful poll, along with its
-                // watched state. Anything listed here is queued for silent destruction.
+                // A stored row whose href is now under /shorts/ is flagged short-form by
+                // `RssFetcher::ingest` on the next successful poll and drops out of the
+                // feed. The row and its watched state stay, so this is reversible.
                 if ($stored && $isShort) {
                     $storedShorts[] = sprintf(
                         '%s | %s | states=%d | %s',
@@ -290,7 +301,7 @@ class DiagnosePollingCommand extends Command
         ));
 
         $this->newLine();
-        $this->line('Stored rows a /shorts/ href will delete on the next successful poll: '.count($storedShorts));
+        $this->line('Stored rows a /shorts/ href will flag on the next successful poll: '.count($storedShorts));
 
         foreach ($storedShorts as $line) {
             $this->line('  '.$line);
@@ -316,9 +327,14 @@ class DiagnosePollingCommand extends Command
     }
 
     /**
-     * Whether the /shorts/ href we delete on actually agrees with YouTube. A landscape
+     * Whether the /shorts/ href we flag on actually agrees with YouTube. A landscape
      * or long video canonicalised under /shorts/ would be a false positive, and the
-     * deletion leaves no trace, so this is the only way to catch one.
+     * flag is invisible in the feed, so this is the way to catch one.
+     *
+     * From a datacenter IP YouTube serves an interstitial with no player payload:
+     * canonical reads `watch`, duration is absent, and dimensions come back 140x100.
+     * Printing that as `watch` would be a confident wrong answer, so a page with no
+     * player payload is reported `unclassified` instead.
      *
      * @param  list<array{video: string, title: string}>  $shorts
      */
@@ -332,9 +348,15 @@ class DiagnosePollingCommand extends Command
 
         $this->newLine();
         $this->components->info('Shorts probe: RSS href against the watch page');
-        $this->line(sprintf('%-13s %-9s %-8s %s', 'video', 'canonical', 'seconds', 'ratio'));
+        $this->line(sprintf('%-13s %-13s %-8s %s', 'video', 'canonical', 'seconds', 'ratio'));
+
+        $probed = 0;
+        $unclassified = 0;
+        $sleepMicroseconds = max(0, (int) $this->option('sleep')) * 1000;
 
         foreach (array_slice($shorts, 0, $limit) as $row) {
+            $probed++;
+
             try {
                 $response = Http::withHeaders([
                     'User-Agent' => (string) config('services.websub.user_agent'),
@@ -361,7 +383,9 @@ class DiagnosePollingCommand extends Command
                 ? $match[1]
                 : '';
 
-            $seconds = preg_match('/"approxDurationMs":"(\d+)"/', $html, $duration)
+            $hasPlayerPayload = preg_match('/"approxDurationMs":"(\d+)"/', $html, $duration) === 1;
+
+            $seconds = $hasPlayerPayload
                 ? (string) (int) round(((int) $duration[1]) / 1000)
                 : '?';
 
@@ -369,21 +393,42 @@ class DiagnosePollingCommand extends Command
                 ? ((int) $size[1] < (int) $size[2] ? 'portrait ' : 'landscape ').$size[1].'x'.$size[2]
                 : '?';
 
+            if (! $hasPlayerPayload) {
+                $unclassified++;
+                $this->line(sprintf(
+                    '%-13s %-13s no player payload: this IP is being served an interstitial',
+                    $row['video'],
+                    'unclassified',
+                ));
+
+                $this->maybeSleep($sleepMicroseconds);
+
+                continue;
+            }
+
             $this->line(sprintf(
-                '%-13s %-9s %-8s %s',
+                '%-13s %-13s %-8s %s',
                 $row['video'],
                 str_contains((string) parse_url($canonical, PHP_URL_PATH), '/shorts/') ? 'shorts' : 'watch',
                 $seconds,
                 $ratio,
             ));
 
-            $this->maybeSleep(400000);
+            $this->maybeSleep($sleepMicroseconds);
+        }
+
+        if ($probed > 0 && $unclassified === $probed) {
+            $this->components->warn(
+                'Shorts probe unusable from this IP: every page came back without a player payload. '
+                .'Run it from a residential connection, or trust nothing it printed.'
+            );
         }
     }
 
     /**
-     * Section 5. `RssFetcher::ingest` deletes a video's `user_video_states` alongside
-     * the row, so orphaned state is evidence of a *different* deletion path.
+     * Section 5. Nothing in the poll path deletes a video any more (a Short is flagged
+     * in place), so any orphaned `user_video_states` row is evidence of a deletion path
+     * from before [036], or of one we do not know about.
      */
     protected function reportDeletionTells(): void
     {

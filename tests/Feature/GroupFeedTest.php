@@ -194,3 +194,31 @@ test('refresh route forces RSS fetch', function () {
 
     Http::assertSentCount(1);
 });
+
+test('feed excludes videos flagged as short-form', function () {
+    Http::fake(['*' => Http::response('<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>', 200)]);
+
+    $user = User::factory()->create();
+    $group = ChannelGroup::factory()->for($user)->create();
+    $channel = Channel::factory()->create(['last_fetched_at' => now()]);
+    $group->channels()->attach($channel);
+
+    $long = Video::factory()->create([
+        'channel_id' => $channel->id,
+        'published_at' => now()->subDay(),
+    ]);
+    Video::factory()->create([
+        'channel_id' => $channel->id,
+        'published_at' => now(),
+        'is_short' => true,
+    ]);
+
+    $response = $this->actingAs($user)->get(route('groups.show', $group), inertiaPartial('Groups/Show'));
+
+    $response->assertOk();
+
+    $data = $response->json('props.videos.data');
+
+    expect($data)->toHaveCount(1)
+        ->and($data[0]['youtube_video_id'])->toBe($long->youtube_video_id);
+});

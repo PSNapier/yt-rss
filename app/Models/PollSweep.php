@@ -13,8 +13,11 @@ use Illuminate\Database\Eloquent\Model;
     'not_modified',
     'failed',
     'blocked',
+    'failure_categories',
+    'shorts_flagged',
     'cap_hit',
     'cooldown_triggered',
+    'failure_alert',
 ])]
 class PollSweep extends Model
 {
@@ -23,8 +26,10 @@ class PollSweep extends Model
         return [
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
+            'failure_categories' => 'array',
             'cap_hit' => 'boolean',
             'cooldown_triggered' => 'boolean',
+            'failure_alert' => 'boolean',
         ];
     }
 }
