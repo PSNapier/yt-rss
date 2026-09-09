@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['channel_id', 'name', 'rss_url', 'last_fetched_at', 'rss_etag', 'rss_last_modified'])]
+#[Fillable(['channel_id', 'handle', 'name', 'rss_url', 'last_fetched_at', 'rss_etag', 'rss_last_modified'])]
 class Channel extends Model
 {
     /** @use HasFactory<ChannelFactory> */
