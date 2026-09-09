@@ -1,19 +1,10 @@
 <script setup lang="ts">
-import {
-    ChevronDownIcon,
-    ChevronUpIcon,
-    StarIcon,
-} from '@heroicons/vue/24/outline';
+import { StarIcon } from '@heroicons/vue/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref, useTemplateRef } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
-import {
-    Collapsible,
-    CollapsibleContent,
-    CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import {
     Dialog,
     DialogContent,
@@ -152,10 +143,9 @@ const onSearchBlur = () => {
     }, 150);
 };
 
-// --- Manual ID fallback ---
-const idFallbackOpen = ref(false);
+// --- Add by URL, @handle, or channel ID ---
 const idForm = useForm({
-    mode: 'id' as const,
+    mode: 'auto' as const,
     value: '',
     group_ids: [] as number[],
 });
@@ -170,10 +160,7 @@ const submitIdForm = () => {
     idForm.group_ids = addGroupIds.value;
     idForm.post(subscriptions.store().url, {
         preserveScroll: true,
-        onSuccess: () => {
-            idForm.reset('value');
-            idFallbackOpen.value = false;
-        },
+        onSuccess: () => idForm.reset('value'),
     });
 };
 
@@ -480,67 +467,53 @@ const onImportFile = (e: Event) => {
                     </p>
                 </div>
 
-                <!-- Manual channel ID fallback -->
-                <Collapsible v-model:open="idFallbackOpen">
-                    <CollapsibleTrigger as-child>
+                <!-- Add by URL, @handle, or channel ID -->
+                <form
+                    class="grid gap-2"
+                    @submit.prevent="submitIdForm"
+                >
+                    <Label for="sub-channel-id-input"
+                        >Add by URL, @handle, or channel ID</Label
+                    >
+                    <p
+                        id="sub-channel-id-hint"
+                        class="text-xs text-muted-foreground"
+                    >
+                        Paste a channel URL, an
+                        <code>@handle</code>, or a
+                        <code>UCxxxxxxxxxxxxxxxxxxxxxx</code> id. Custom
+                        <code>/c/</code> URLs are not supported — use the
+                        @handle.
+                    </p>
+                    <div class="flex gap-2">
+                        <Input
+                            id="sub-channel-id-input"
+                            v-model="idForm.value"
+                            placeholder="https://youtube.com/@handle"
+                            autocomplete="off"
+                            aria-describedby="sub-channel-id-hint"
+                        />
                         <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            class="-mx-1 gap-1 text-muted-foreground"
+                            type="submit"
+                            :disabled="idForm.processing || !idForm.value"
+                            class="shrink-0"
                         >
-                            Add by channel ID
-                            <ChevronDownIcon
-                                v-if="!idFallbackOpen"
-                                class="size-4"
-                            />
-                            <ChevronUpIcon v-else class="size-4" />
+                            Add channel
                         </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                        <form
-                            class="mt-3 flex flex-col gap-3"
-                            @submit.prevent="submitIdForm"
-                        >
-                            <div class="grid gap-2">
-                                <p
-                                    id="sub-channel-id-hint"
-                                    class="text-xs text-muted-foreground"
-                                >
-                                    Looks like
-                                    <code>UCxxxxxxxxxxxxxxxxxxxxxx</code>. Found
-                                    in YouTube channel URL or page source.
-                                </p>
-                                <Input
-                                    id="sub-channel-id-input"
-                                    v-model="idForm.value"
-                                    placeholder="UC..."
-                                    autocomplete="off"
-                                    aria-describedby="sub-channel-id-hint"
-                                />
-                                <p
-                                    v-if="idForm.errors.value"
-                                    class="text-sm text-destructive"
-                                >
-                                    {{ idForm.errors.value }}
-                                </p>
-                                <p
-                                    v-if="idForm.errors.group_ids"
-                                    class="text-sm text-destructive"
-                                >
-                                    {{ idForm.errors.group_ids }}
-                                </p>
-                            </div>
-                            <Button
-                                type="submit"
-                                :disabled="idForm.processing || !idForm.value"
-                                class="self-start"
-                            >
-                                Add channel
-                            </Button>
-                        </form>
-                    </CollapsibleContent>
-                </Collapsible>
+                    </div>
+                    <p
+                        v-if="idForm.errors.value"
+                        class="text-sm text-destructive"
+                    >
+                        {{ idForm.errors.value }}
+                    </p>
+                    <p
+                        v-if="idForm.errors.group_ids"
+                        class="text-sm text-destructive"
+                    >
+                        {{ idForm.errors.group_ids }}
+                    </p>
+                </form>
             </div>
 
             <!-- Channel list -->

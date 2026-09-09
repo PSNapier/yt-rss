@@ -62,7 +62,10 @@ class SubscriptionController extends Controller
         $user = $request->user();
 
         $validated = $request->validate([
-            'mode' => 'required|in:handle,id,existing',
+            // `auto` sniffs the value's shape. `handle` and `id` are legacy
+            // aliases that now take the same path; `existing` attaches a
+            // channel already in the directory.
+            'mode' => 'required|in:auto,handle,id,existing',
             'value' => 'required_unless:mode,existing|string|max:255|nullable',
             'channel_id' => 'required_if:mode,existing|string|max:255|nullable',
             'group_ids' => 'required|array|min:1',
@@ -80,17 +83,21 @@ class SubscriptionController extends Controller
             $channel = Channel::where('channel_id', $validated['channel_id'])->firstOrFail();
         } else {
             try {
-                $info = $validated['mode'] === 'handle'
-                    ? $resolver->fromHandle($validated['value'])
-                    : $resolver->fromChannelId($validated['value']);
+                $info = $resolver->resolve($validated['value']);
             } catch (\Throwable $e) {
                 throw ValidationException::withMessages(['value' => $e->getMessage()]);
             }
 
             $channel = Channel::firstOrCreate(
                 ['channel_id' => $info['channel_id']],
-                ['name' => $info['name'], 'rss_url' => $info['rss_url']]
+                ['name' => $info['name'], 'rss_url' => $info['rss_url'], 'handle' => $info['handle']]
             );
+
+            // Cache the handle on a channel first added by ID, so the next add
+            // by handle costs nothing.
+            if ($info['handle'] && $channel->handle !== $info['handle']) {
+                $channel->forceFill(['handle' => $info['handle']])->save();
+            }
         }
 
         $groups = ChannelGroup::whereIn('id', $validGroupIds)->get();

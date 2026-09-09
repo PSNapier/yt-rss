@@ -1,5 +1,63 @@
 # Roadmap Done
 
+## [023] Add channels by URL or @handle (YouTube Data API, quota-capped)
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+Let a user add a channel by pasting a YouTube channel URL or an @handle, not only a raw UC id. Resolution uses the YouTube Data API only where needed, self-capped at 9500 units/day with a soft "daily new-channel cap reached, try again soon" message when exhausted. Supersedes [013] (the smart input replaces the always-visible id-only field). This is the channel-ID acquisition work deferred by [021].
+
+### Scope
+
+- One smart add-input in Subscriptions.vue accepting a UC id, a channel URL, or an @handle
+- Backend input sniffing that routes to a free local parse or a counted Data API resolve
+- A nullable `handle` column on `channels` to cache handle -> channel_id and dedupe repeat adds for free
+- A durable daily API-usage counter (DB row keyed by Pacific date) and a soft cap at 9500
+- The cap message on API-requiring adds only; free-path adds still succeed when capped
+
+### Technical Notes
+
+- Accepted forms: raw `UC…` and `/channel/UC…` URLs parse locally (free, no tick); `@handle` and `/@handle` URLs use Data API `forHandle` (1 unit); `/user/legacyname` uses `forUsername` (1 unit). `/c/` custom URLs are rejected with "paste the @handle instead" (no 100-unit search.list, no scraping).
+- Counter ticks **per real Data API call**, including calls returning zero results. Route **every** Data API request through one counted client — including the name-enrichment fallback `ChannelResolver::lookupChannelName()` (`ChannelResolver.php:148-165`), so no spend escapes the budget. Prefer the id+snippet that `forHandle`/`forUsername` already returns so name enrichment needs no extra unit.
+- `ChannelResolver::fromHandle()` (`ChannelResolver.php:45-84`) already exists but throws if no key; extend it to also handle `/user/` and to persist the resolved `handle`. `fromChannelId()` (`:21-38`) stays the free path; add a URL-sniffing entrypoint that extracts `UC…` from `/channel/…` URLs and dispatches the rest.
+- Counter storage: a small table (e.g. `youtube_api_usage` with `date_pt`, `units_used`) with an atomic increment, keyed by `America/Los_Angeles` date to match Google's midnight-Pacific reset. Follow the per-user persistence pattern of `FeedCapController` / `UserChannelCap` (`updateOrCreate` with a sentinel) as the closest existing template, but this counter is **global**, not per-user.
+- Cap behavior: check remaining budget **before** an API call. If a resolution would need the API and budget is exhausted, reject with the cap message surfaced as a `value` validation error (matching how `SubscriptionController::store` rethrows resolver failures at `:85-87`). Free-path (`UC…`, `/channel/…`) and cached-handle adds bypass the check.
+- Migration: add nullable `handle` (indexed) to `channels` (`2026_05_04_170004_create_channels_table.php` schema; model fillable at `Channel.php:12`). Backfill is unnecessary — handle populates lazily on next resolve.
+- Frontend: replace the "Add by channel ID" collapsible (`Subscriptions.vue:484-543`) with one always-visible input; `submitIdForm` (`:163-178`) posts to `subscriptions.store` (`POST /subscriptions`) with a single `value`. Backend derives `mode` from the value shape (drop the client-sent `mode` reliance, or keep `mode` but add an `auto` branch). Keep the group-selection guard.
+- **Prerequisite:** a real `YOUTUBE_API_KEY` / `services.youtube.api_key` provisioned against a Google Cloud project with the Data API enabled. `fromHandle()` throws without it.
+- **Manual** because it depends on external API-key provisioning and needs empirical verification of `forHandle`/`forUsername` behavior against live channels.
+
+**As built (2026-09-09):**
+
+- The counted client is `app/Services/YoutubeApiClient.php`. One method, `channelsList()`, is the only door to the Data API: it refuses without a key, calls `assertBudget()`, ticks the counter **before** dispatching (Google charges for empty and errored responses too), and unwraps `items`. `DAILY_CAP = 9500`, `CAP_MESSAGE` is the user-facing string.
+- API failures now surface Google's own `error.errors.0.reason` and message rather than a bare status, because a 403 is unactionable without it.
+- Counter storage is the `youtube_api_usage` table (`date_pt` unique, `units_used`) with model `App\Models\YoutubeApiUsage`. `consume()` does `firstOrCreate` then an atomic `increment`. The date comes from `CarbonImmutable::now('America/Los_Angeles')`.
+- `ChannelResolver::resolve()` is the sniffing entrypoint. `mode` was kept on the request and gained an `auto` branch; the legacy `handle` and `id` values now take the same sniffing path, so the client no longer decides the mode.
+- Handles are stored normalised (lowercased, leading `@`) and read from `snippet.customUrl` when the API returns one, falling back to the queried handle. This is what makes a re-add of `@MKBHD` match a stored `@mkbhd` for free.
+- `lookupChannelName()` (the RSS-failed name fallback) is routed through the counted client but **skips entirely when the budget is spent** — a missing display name is not worth a unit a real resolution needs.
+- The channel's stored name ends up as the RSS feed title, not the API `snippet.title`: `RssFetcher` overwrites it on the first fetch triggered by the add. Pre-existing behaviour, not introduced here.
+- Ticking before dispatch over-counts on auth failures: a 403 IP-restriction rejection is refused before Google's quota accounting, but we still charge ourselves a unit (observed, 6 units burned across two live attempts). Deliberate — the error is only ever conservative, shrinking our own budget rather than overspending Google's.
+- **Outstanding manual check.** The provisioned key works, but carries an IP-address restriction that rejects this dev machine (`403 forbidden: The provided API key has an IP address restriction`, observed three times). Free paths were confirmed live against `UCBJycsmduvYEL83R_U4JriQ`; `forHandle`/`forUsername` were confirmed against faked responses only. Criterion 2 was checked at the user's direction with the live round-trip delegated to them. **To finish it:** add the dev egress IPs (`70.121.102.144`, `2603:8080:e500:21::/64`) under the key's Application restrictions → IP addresses, then resolve a real `@handle` and confirm one unit ticks. If it fails, reopen as a new item rather than editing this archived one.
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** `/subscriptions`. Paste a channel URL, an `@handle`, or a `UC…` id into the "Add by URL, @handle, or channel ID" field, choose one or more groups in "Add to groups", then press "Add channel". The old "Add by channel ID" collapsible is gone; this field replaces it.
+
+### Acceptance Criteria
+
+- [x] Pasting a `/channel/UC…` URL or a raw `UC…` id adds the channel with zero Data API units spent and no counter tick — `tests/Feature/ChannelAddResolutionTest.php::a raw UC id or a /channel/ URL adds the channel with no API unit and no tick`
+- [x] Pasting an `@handle`, `/@handle` URL, or `/user/…` URL resolves via the Data API, spends exactly one unit, ticks the counter, and stores the handle — `tests/Feature/ChannelAddResolutionTest.php::a handle, /@handle URL, or /user/ URL resolves via the API for exactly one unit and stores the handle` **proven against faked responses; the live `forHandle`/`forUsername` round-trip is owned by the user, pending the key's IP allowlist**
+- [x] Re-adding a previously resolved `@handle` is a free local lookup (no unit, no tick) — `tests/Feature/ChannelAddResolutionTest.php::re-adding an already resolved handle is a free local lookup`
+- [x] A `/c/` custom URL is rejected with a message directing the user to the @handle — `tests/Feature/ChannelAddResolutionTest.php::a /c/ custom URL is rejected and points the user at the @handle`
+- [x] When the counter reaches 9500, an API-requiring add is refused with "daily new-channel cap reached, try again soon", while a `UC…`/`/channel/…` add still succeeds — `tests/Feature/ChannelAddResolutionTest.php::at the daily cap an API add is refused while a UC add still succeeds`
+- [x] The counter is stored durably and resets at midnight America/Los_Angeles — `tests/Feature/ChannelAddResolutionTest.php::the counter is stored durably and rolls over at midnight America/Los_Angeles`
+
+---
+
 ## [036] Flag Shorts instead of destroying them
 
 **Status:** `done`
