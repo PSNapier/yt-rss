@@ -6,6 +6,8 @@ use App\Http\Controllers\ChannelController;
 use App\Http\Controllers\ChannelGroupController;
 use App\Http\Controllers\FeedCapController;
 use App\Http\Controllers\GroupFeedController;
+use App\Http\Controllers\ShortsCategoryFilterController;
+use App\Http\Controllers\ShortsFeedController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\VideoStateController;
 use App\Http\Controllers\WebSubController;
@@ -34,6 +36,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('feed', [AllVideosFeedController::class, 'index'])->name('feed.index');
     Route::post('feed/cap', [FeedCapController::class, 'update'])->name('feed.cap');
+
+    Route::get('shorts', [ShortsFeedController::class, 'index'])->name('shorts.index');
+    Route::post('shorts/categories', [ShortsCategoryFilterController::class, 'update'])->name('shorts.categories');
 
     Route::get('subscriptions', [SubscriptionController::class, 'index'])->name('subscriptions.index');
     Route::post('subscriptions', [SubscriptionController::class, 'store'])->name('subscriptions.store');

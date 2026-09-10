@@ -1,6 +1,11 @@
 <script setup lang="ts">
+import {
+    BoltIcon,
+    HomeIcon,
+    QueueListIcon,
+    VideoCameraIcon,
+} from '@heroicons/vue/24/outline';
 import { Link } from '@inertiajs/vue3';
-import { HomeIcon, QueueListIcon, VideoCameraIcon } from '@heroicons/vue/24/outline';
 import AppLogo from '@/components/AppLogo.vue';
 import NavGroupFeeds from '@/components/NavGroupFeeds.vue';
 import NavMain from '@/components/NavMain.vue';
@@ -14,6 +19,7 @@ import {
 } from '@/components/ui/sidebar';
 import feed from '@/routes/feed';
 import groups from '@/routes/groups';
+import shorts from '@/routes/shorts';
 import subscriptions from '@/routes/subscriptions';
 import type { NavItem } from '@/types';
 
@@ -27,6 +33,11 @@ const mainNavItems: NavItem[] = [
         title: 'All Videos',
         href: feed.index(),
         icon: VideoCameraIcon,
+    },
+    {
+        title: 'Shorts',
+        href: shorts.index(),
+        icon: BoltIcon,
     },
     {
         title: 'Subscriptions',

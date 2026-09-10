@@ -48,3 +48,25 @@ test('prune-shorts skips videos already flagged', function () {
 
     Http::assertNothingSent();
 });
+
+test('prune-shorts walks one id window at a time so a long backlog can be chunked', function () {
+    $channel = Channel::factory()->create();
+
+    $first = Video::factory()->for($channel)->create(['youtube_video_id' => 'ssDbeb9vB6g']);
+    $second = Video::factory()->for($channel)->create(['youtube_video_id' => '1PZKfIyrYOc']);
+    $third = Video::factory()->for($channel)->create(['youtube_video_id' => 'aaaaaaaaaaa']);
+
+    Http::fake([
+        '*' => Http::response('<link rel="canonical" href="https://www.youtube.com/shorts/x">', 200),
+    ]);
+
+    Artisan::call('videos:prune-shorts', ['--after-id' => $first->id, '--limit' => 1, '--sleep' => 0]);
+
+    // The window starts after `first` and holds one row, so only `second` is touched.
+    expect($first->fresh()->is_short)->toBeFalse();
+    expect($second->fresh()->is_short)->toBeTrue();
+    expect($third->fresh()->is_short)->toBeFalse();
+
+    // The command reports where the next window should start.
+    expect(Artisan::output())->toContain("--after-id={$second->id}");
+});

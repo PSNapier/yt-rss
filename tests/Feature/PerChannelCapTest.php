@@ -175,3 +175,28 @@ test('the subscriptions index exposes each channel unwatched_cap', function () {
         ->where('channels.0.unwatched_cap', 5)
     );
 });
+
+test('the cap scope defaults to long form and shorts never consume the cap window', function () {
+    $user = User::factory()->create(['feed_cap_enabled' => true]);
+    $group = ChannelGroup::factory()->for($user)->create();
+    $channel = Channel::factory()->create(['last_fetched_at' => now()]);
+    $group->channels()->attach($channel);
+
+    $long = Video::factory()->create([
+        'channel_id' => $channel->id,
+        'is_short' => false,
+        'published_at' => now()->subDay(),
+    ]);
+
+    // Newer Shorts would win the "newest unwatched" race if the scope counted them.
+    Video::factory()->count(3)->create([
+        'channel_id' => $channel->id,
+        'is_short' => true,
+        'published_at' => now(),
+    ]);
+
+    $response = $this->actingAs($user)
+        ->get(route('feed.index'), inertiaPartial('Videos/Feed'));
+
+    expect(capFeedIds($response))->toBe([$long->youtube_video_id]);
+});

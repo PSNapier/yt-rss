@@ -45,4 +45,14 @@ class User extends Authenticatable
         return $this->belongsToMany(Channel::class, 'user_channel_favorites')
             ->withTimestamps();
     }
+
+    /**
+     * Categories the user has hidden from the Shorts feed. Absence means visible,
+     * so a newly created group shows up without an opt-in.
+     */
+    public function hiddenShortGroups(): BelongsToMany
+    {
+        return $this->belongsToMany(ChannelGroup::class, 'user_hidden_short_groups')
+            ->withTimestamps();
+    }
 }
