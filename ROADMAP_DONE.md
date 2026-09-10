@@ -1,5 +1,100 @@
 # Roadmap Done
 
+## [037] Shorts feed page
+
+**Status:** `done`
+**Depends On:** none
+**Spec:** none
+
+### Goal
+
+Shorts get one home. A dedicated feed page lists every Short from subscribed channels, and it stays the only surface where Shorts appear: All Videos and every group feed remain long-form only. The page carries the same reading controls as the other feeds, plus a per-category visibility filter persisted per user.
+
+### Scope
+
+- New route and page listing videos where `is_short = true`, cursor-paginated and ordered newest first, matching the All Videos read
+- Sidebar entry titled "Shorts" directly below "All Videos" in `NavMain`
+- Category chip row: one chip per group, click to hide or show; hidden set persisted per user
+- Show/hide-watched eye toggle, unpersisted, matching `Feed.vue`
+- "Show only latest" cap toggle, sharing the existing `users.feed_cap_enabled` flag
+- Vertical 9:16 cards in a denser grid, clicking through to `youtube.com/shorts/{id}`
+- Backfill run of `videos:prune-shorts`: locally first, then production. Windowing options (`--after-id`, `--limit`) were added to the command to make that runnable
+- **Not in scope:** persisting the watched toggle (that is `[008]`, which should cover this page too), any change to which videos All Videos or group feeds show, a Shorts-only ingest path
+
+### Technical Notes
+
+**User flows:**
+
+- **User:** "Shorts" in the sidebar at `/shorts`. Hide or show categories with the chip row, toggle watched visibility and the latest-only cap, click a card to open the Short on YouTube.
+
+**Details:**
+
+- Both existing feeds filter `videos.is_short = false` (`AllVideosFeedController.php:48`, `GroupFeedController.php:51`). The new controller is the mirror of `AllVideosFeedController::index` with that predicate inverted plus the group filter.
+- `Video::scopeUnwatchedCappedPerChannel` hardcodes `v2.is_short = 0` (`Video.php:56`). Parameterise it to take the form (long-form default, Shorts opt-in) so the shared cap toggle caps Shorts per channel on this page. **The default must stay `is_short = 0`** so no existing feed can leak Shorts through the scope.
+- Category filter is **server-side**: chip toggles refetch with the new group set, otherwise cursor pages arrive partly empty and Load more misbehaves. Persist the **hidden** set (pivot keyed on user + `channel_groups.id`, cascade on group delete) so a newly created group shows up on this page by default.
+- Every subscribed channel reaches the feed through a group (`AllVideosFeedController.php:17-21`), so the chip row covers all Shorts with no "ungrouped" bucket.
+- Stored thumbnails are 16:9 (`https://i1.ytimg.com/vi/{id}/hqdefault.jpg`). The vertical card requests `oardefault.jpg` at the same ID and falls back to a centre-cropped `hqdefault` on image error. No schema change.
+- `RssFetcher` already derives the Shorts href for the alternate link; reuse that shape for the card URL rather than rebuilding it.
+- Backfill: `php artisan videos:prune-shorts` walks unclassified rows one watch-page request at a time. The dev DB currently has **0 of 1613 videos flagged**, so the page is empty until it runs. Verify classification quality locally with `--dry-run` before the production run.
+- The `is_short` flag only ever goes on (`RssFetcher.php:400-404`), so a misclassified long-form video is stuck on this page. Spot-check the dry run output before committing to a real pass.
+
+**Built.** Backend: `ShortsFeedController` (`/shorts`), `ShortsCategoryFilterController` (`POST /shorts/categories`, payload is the whole hidden set), `user_hidden_short_groups` pivot with `User::hiddenShortGroups()`, and `scopeUnwatchedCappedPerChannel($userId, shorts: false)`. Frontend: `pages/Videos/Shorts.vue`, `components/ShortVideoCard.vue`, "Shorts" entry in `AppSidebar.vue` (`BoltIcon`). A chip toggle clears the loaded pages and cursor before refetching, since the narrowed query invalidates them.
+
+**Verified by hand** at `http://yt-rss.test/shorts` (Playwright, 1440x900): empty state copy, sidebar placement and active state, vertical grid rendering real `oardefault.jpg` frames (718x1280, 1080x1920), per-card fallback to `hqdefault` on image error, `https://www.youtube.com/shorts/{id}` hrefs, chip hide surviving a reload, and a card click writing `user_video_states.state = watched`.
+
+**Backfill, and what it took (2026-09-09).** A `--dry-run` classified cleanly, but the real pass straight after it returned `Flagged 1 Short(s); 1171 uncertain`: watch pages answered `302` to `/sorry/index`, YouTube's bot wall. Measured behaviour of that wall from this IP: it arrives after roughly 150-200 watch-page requests, and it lifts on its own in about 10 minutes. Pacing a single long run does not get past it, because the budget is per window of time, not per request gap.
+
+What worked: **60-100 video windows with a 20-minute gap between pairs**, using the new `--after-id` / `--limit` options. Every window from id 0 to 1674 came back `0 uncertain`. Final state: **1613 videos classified, 11 Shorts**.
+
+```
+php artisan videos:prune-shorts --sleep=600 --limit=60 --after-id=<last>
+```
+
+Two traps worth remembering. A killed wrapper leaves the artisan child running: stray drivers from earlier attempts kept sweeping while walled and dug the block deeper, so kill by PID and verify. And the detector returns `null` on a non-200, so a walled request costs coverage, never a wrong flag - the data was never at risk, only the coverage.
+
+Production still needs its own pass after this branch deploys. It is a different IP, so it gets its own budget, but the same windowed recipe applies. If it hits a harder ceiling, that is `[031]`'s problem, not more patience.
+
+The hero's title and toggle buttons overlap below ~900px viewport width. That is the existing `Feed.vue` hero layout, not new to this page: capture it separately if it matters.
+
+```mermaid
+flowchart LR
+    A[videos] -->|is_short = 0| B[All Videos + group feeds]
+    A -->|is_short = 1| C[Shorts page]
+    C --> D{group hidden?}
+    D -->|yes| E[excluded from query]
+    D -->|no| F[vertical card grid]
+    F --> G[youtube.com/shorts/id]
+```
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** "Shorts" in the sidebar at `/shorts`. Hide or show categories with the chip row, toggle watched visibility and the latest-only cap, click a card to open the Short on YouTube.
+
+### Acceptance Criteria
+
+- [x] `/shorts` lists only Shorts from subscribed channels, newest first, cursor-paginated
+      `tests/Feature/ShortsFeedTest.php::lists only shorts for subscribed channels`
+- [x] All Videos and group feeds still exclude Shorts after the cap scope is parameterised
+      `tests/Feature/ShortsFeedTest.php::other feeds never return shorts`
+      `tests/Feature/PerChannelCapTest.php::the cap scope defaults to long form and shorts never consume the cap window`
+- [x] Hiding a category removes its channels' Shorts from the query and survives a reload; a newly created group is visible by default
+      `tests/Feature/ShortsFeedTest.php::hidden categories are excluded and persist`
+      `tests/Feature/ShortsFeedTest.php::new group is visible by default`
+      `tests/Feature/ShortsFeedTest.php::a channel in both a hidden and a visible category still shows`
+- [x] "Show only latest" caps Shorts per channel using the shared `feed_cap_enabled` flag
+      `tests/Feature/ShortsFeedTest.php::cap toggle limits shorts per channel`
+- [x] Hidden-state videos stay out of the Shorts feed, and clicking a card marks it watched
+      `tests/Feature/ShortsFeedTest.php::excludes hidden videos`
+- [x] Cards render 9:16, fall back to the cropped 16:9 thumbnail when `oardefault` 404s, and open `youtube.com/shorts/{id}`
+- [x] Sidebar shows "Shorts" directly below "All Videos" with correct active highlighting
+- [x] Empty page reads "No Shorts yet" rather than a broken grid
+- [x] `videos:prune-shorts` dry run reviewed locally before committing to a real pass
+- [x] A real pass completes locally — 1613 videos classified, 11 Shorts, every window 0 uncertain
+
+---
+
 ## [023] Add channels by URL or @handle (YouTube Data API, quota-capped)
 
 **Status:** `done`
@@ -39,7 +134,8 @@ Let a user add a channel by pasting a YouTube channel URL or an @handle, not onl
 - `lookupChannelName()` (the RSS-failed name fallback) is routed through the counted client but **skips entirely when the budget is spent** — a missing display name is not worth a unit a real resolution needs.
 - The channel's stored name ends up as the RSS feed title, not the API `snippet.title`: `RssFetcher` overwrites it on the first fetch triggered by the add. Pre-existing behaviour, not introduced here.
 - Ticking before dispatch over-counts on auth failures: a 403 IP-restriction rejection is refused before Google's quota accounting, but we still charge ourselves a unit (observed, 6 units burned across two live attempts). Deliberate — the error is only ever conservative, shrinking our own budget rather than overspending Google's.
-- **Outstanding manual check.** The provisioned key works, but carries an IP-address restriction that rejects this dev machine (`403 forbidden: The provided API key has an IP address restriction`, observed three times). Free paths were confirmed live against `UCBJycsmduvYEL83R_U4JriQ`; `forHandle`/`forUsername` were confirmed against faked responses only. Criterion 2 was checked at the user's direction with the live round-trip delegated to them. **To finish it:** add the dev egress IPs (`70.121.102.144`, `2603:8080:e500:21::/64`) under the key's Application restrictions → IP addresses, then resolve a real `@handle` and confirm one unit ticks. If it fails, reopen as a new item rather than editing this archived one.
+- **Live verification: done, on staging (2026-09-09).** Adding a channel by `@handle` resolved through `forHandle` against the real key. Free paths were separately confirmed live against `UCBJycsmduvYEL83R_U4JriQ`.
+- **The key is IP-restricted to the server, not to dev machines.** Local `forHandle`/`forUsername` calls fail with `403 forbidden: The provided API key has an IP address restriction`, which is why this item's API paths could only be tested against faked responses locally. Anyone doing further Data API work from a dev box must add their egress IP under the key's Application restrictions → IP addresses first, and should allowlist an IPv6 `/64` prefix rather than a host address, since Windows rotates the interface ID.
 
 User Flows:
 
@@ -50,7 +146,7 @@ User Flows:
 ### Acceptance Criteria
 
 - [x] Pasting a `/channel/UC…` URL or a raw `UC…` id adds the channel with zero Data API units spent and no counter tick — `tests/Feature/ChannelAddResolutionTest.php::a raw UC id or a /channel/ URL adds the channel with no API unit and no tick`
-- [x] Pasting an `@handle`, `/@handle` URL, or `/user/…` URL resolves via the Data API, spends exactly one unit, ticks the counter, and stores the handle — `tests/Feature/ChannelAddResolutionTest.php::a handle, /@handle URL, or /user/ URL resolves via the API for exactly one unit and stores the handle` **proven against faked responses; the live `forHandle`/`forUsername` round-trip is owned by the user, pending the key's IP allowlist**
+- [x] Pasting an `@handle`, `/@handle` URL, or `/user/…` URL resolves via the Data API, spends exactly one unit, ticks the counter, and stores the handle — `tests/Feature/ChannelAddResolutionTest.php::a handle, /@handle URL, or /user/ URL resolves via the API for exactly one unit and stores the handle` **verified live on staging (2026-09-09): an `@handle` add resolved through `forHandle` against the real key**
 - [x] Re-adding a previously resolved `@handle` is a free local lookup (no unit, no tick) — `tests/Feature/ChannelAddResolutionTest.php::re-adding an already resolved handle is a free local lookup`
 - [x] A `/c/` custom URL is rejected with a message directing the user to the @handle — `tests/Feature/ChannelAddResolutionTest.php::a /c/ custom URL is rejected and points the user at the @handle`
 - [x] When the counter reaches 9500, an API-requiring add is refused with "daily new-channel cap reached, try again soon", while a `UC…`/`/channel/…` add still succeeds — `tests/Feature/ChannelAddResolutionTest.php::at the daily cap an API add is refused while a UC add still succeeds`

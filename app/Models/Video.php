@@ -25,35 +25,40 @@ class Video extends Model
      * given user, so `user_video_states.state` is NULL for unwatched and
      * 'watched' for watched.
      *
+     * The cap counts within one form only: long-form by default, Shorts when
+     * `$shorts` is true. Shorts live on their own feed, so a Short must never
+     * consume a long-form channel's cap window (or the reverse).
+     *
      * @param  Builder<Video>  $query
      * @return Builder<Video>
      */
-    public function scopeUnwatchedCappedPerChannel(Builder $query, int $userId): Builder
+    public function scopeUnwatchedCappedPerChannel(Builder $query, int $userId, bool $shorts = false): Builder
     {
         $default = UserChannelCap::DEFAULT_CAP;
         $capExpr = "COALESCE(ucc.cap, {$default})";
+        $formPredicate = $shorts ? 'v2.is_short = 1' : 'v2.is_short = 0';
 
         return $query
             ->leftJoin('user_channel_caps as ucc', function ($j) use ($userId) {
                 $j->on('ucc.channel_id', '=', 'videos.channel_id')
                     ->where('ucc.user_id', $userId);
             })
-            ->where(function ($q) use ($userId, $capExpr) {
+            ->where(function ($q) use ($userId, $capExpr, $formPredicate) {
                 // Watched videos always render (existing behavior).
                 $q->where('user_video_states.state', 'watched')
                     // ...or this unwatched video is within its channel's cap:
                     // fewer newer unwatched videos of the same channel exist
                     // than the effective cap (0 = unlimited).
-                    ->orWhere(function ($q2) use ($userId, $capExpr) {
+                    ->orWhere(function ($q2) use ($userId, $capExpr, $formPredicate) {
                         $q2->whereNull('user_video_states.state')
-                            ->where(function ($q3) use ($userId, $capExpr) {
+                            ->where(function ($q3) use ($userId, $capExpr, $formPredicate) {
                                 $q3->whereRaw("{$capExpr} = 0")
                                     ->orWhereRaw(
                                         '(select count(*) from videos as v2 '
                                         .'left join user_video_states as uvs2 '
                                         .'on uvs2.youtube_video_id = v2.youtube_video_id and uvs2.user_id = ? '
                                         .'where v2.channel_id = videos.channel_id '
-                                        .'and v2.is_short = 0 '
+                                        .'and '.$formPredicate.' '
                                         .'and uvs2.state is null '
                                         .'and (v2.published_at > videos.published_at '
                                         .'or (v2.published_at = videos.published_at and v2.id > videos.id))'
