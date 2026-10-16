@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { StarIcon } from '@heroicons/vue/24/outline';
+import { EyeIcon, EyeSlashIcon, StarIcon } from '@heroicons/vue/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref, useTemplateRef } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
@@ -17,11 +17,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { clearFeedCache } from '@/composables/useFeedCache';
 import groupRoutes from '@/routes/groups';
+import shorts from '@/routes/shorts';
 import subscriptions from '@/routes/subscriptions';
 
 interface Group {
     id: number;
     name: string;
+    channels_count: number;
+    hidden: boolean;
 }
 
 interface Channel {
@@ -50,6 +53,99 @@ defineOptions({
         breadcrumbs: [],
     },
 });
+
+// --- Group management ---
+const createGroupForm = useForm({ name: '' });
+
+const createGroup = () => {
+    createGroupForm.post(groupRoutes.store().url, {
+        preserveScroll: true,
+        onSuccess: () => createGroupForm.reset('name'),
+    });
+};
+
+const renamingGroupId = ref<number | null>(null);
+const renameGroupForm = useForm({ name: '' });
+
+const startRename = (group: Group) => {
+    renameGroupForm.clearErrors();
+    renameGroupForm.name = group.name;
+    renamingGroupId.value = group.id;
+};
+
+const cancelRename = () => {
+    renamingGroupId.value = null;
+    renameGroupForm.clearErrors();
+};
+
+const submitRename = (group: Group) => {
+    if (renameGroupForm.name.trim() === '' || renameGroupForm.name === group.name) {
+        cancelRename();
+
+        return;
+    }
+
+    renameGroupForm.patch(groupRoutes.update(group.id).url, {
+        preserveScroll: true,
+        onSuccess: () => {
+            renamingGroupId.value = null;
+        },
+    });
+};
+
+const confirmDeleteGroup = ref<Group | null>(null);
+
+const confirmDelete = () => {
+    const group = confirmDeleteGroup.value;
+
+    if (!group) {
+        return;
+    }
+
+    confirmDeleteGroup.value = null;
+    addGroupIds.value = addGroupIds.value.filter((id) => id !== group.id);
+    router.delete(groupRoutes.destroy(group.id).url, {
+        preserveScroll: true,
+    });
+};
+
+// --- Hide groups and the Shorts page ---
+// Hiding changes what All Videos and Shorts return, so cached feed state goes.
+const togglingHiddenGroupId = ref<number | null>(null);
+
+const toggleGroupHidden = (group: Group) => {
+    togglingHiddenGroupId.value = group.id;
+    router.patch(
+        groupRoutes.update(group.id).url,
+        { hidden: !group.hidden },
+        {
+            preserveScroll: true,
+            onSuccess: () => clearFeedCache(),
+            onFinish: () => {
+                togglingHiddenGroupId.value = null;
+            },
+        },
+    );
+};
+
+const page = usePage();
+const shortsHidden = computed(() => page.props.shortsHidden);
+const togglingShorts = ref(false);
+
+const toggleShortsHidden = () => {
+    togglingShorts.value = true;
+    router.patch(
+        shorts.visibility().url,
+        { hidden: !shortsHidden.value },
+        {
+            preserveScroll: true,
+            onSuccess: () => clearFeedCache(),
+            onFinish: () => {
+                togglingShorts.value = false;
+            },
+        },
+    );
+};
 
 // --- Add form group selection ---
 const addGroupIds = ref<number[]>([]);
@@ -340,56 +436,213 @@ const onImportFile = (e: Event) => {
     <Head title="Subscriptions" />
 
     <div class="flex h-full flex-1 flex-col gap-6 p-4">
-        <div
-            class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
+        <Heading
+            title="Subscriptions"
+            description="Your channel groups and every channel in them."
+        />
+
+        <!-- Group management -->
+        <section
+            id="group-management"
+            class="flex max-w-2xl scroll-mt-6 flex-col gap-4 rounded-xl border p-4"
         >
-            <Heading
-                title="Subscriptions"
-                description="All your subscribed channels across all groups."
-            />
-            <div class="flex flex-wrap items-center gap-2 sm:shrink-0">
-                <Button variant="outline" as-child>
-                    <a :href="groupRoutes.exportAll().url" download
-                        >Export JSON</a
+            <div
+                class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+                <h2 class="text-base font-semibold">Groups</h2>
+                <div class="flex flex-wrap items-center gap-2 sm:shrink-0">
+                    <Button variant="outline" size="sm" as-child>
+                        <a :href="groupRoutes.exportAll().url" download
+                            >Export JSON</a
+                        >
+                    </Button>
+                    <input
+                        ref="importFileInput"
+                        type="file"
+                        accept=".json,application/json,text/plain"
+                        class="sr-only"
+                        aria-label="Import all groups JSON file"
+                        @change="onImportFile"
+                    />
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        @click="openImportDialog"
+                        >Import JSON</Button
                     >
-                </Button>
-                <input
-                    ref="importFileInput"
-                    type="file"
-                    accept=".json,application/json,text/plain"
-                    class="sr-only"
-                    aria-label="Import channels JSON file"
-                    @change="onImportFile"
-                />
+                </div>
+            </div>
+            <p v-if="importFileError" class="text-sm text-destructive">
+                {{ importFileError }}
+            </p>
+
+            <form class="grid gap-2" @submit.prevent="createGroup">
+                <Label for="new-group-input">New group</Label>
+                <div class="flex gap-2">
+                    <Input
+                        id="new-group-input"
+                        v-model="createGroupForm.name"
+                        placeholder="Group name"
+                        autocomplete="off"
+                    />
+                    <Button
+                        type="submit"
+                        class="shrink-0"
+                        :disabled="
+                            createGroupForm.processing || !createGroupForm.name
+                        "
+                        >Create group</Button
+                    >
+                </div>
+                <p
+                    v-if="createGroupForm.errors.name"
+                    class="text-sm text-destructive"
+                >
+                    {{ createGroupForm.errors.name }}
+                </p>
+            </form>
+
+            <p
+                v-if="groups.length === 0"
+                class="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground"
+            >
+                No channel groups yet. Create one above, then add channels to
+                it.
+            </p>
+
+            <ul v-else class="divide-y rounded-xl border">
+                <li
+                    v-for="group in groups"
+                    :key="group.id"
+                    class="flex flex-col gap-1 p-3"
+                >
+                    <form
+                        v-if="renamingGroupId === group.id"
+                        class="flex gap-2"
+                        @submit.prevent="submitRename(group)"
+                        @keydown.esc="cancelRename"
+                    >
+                        <Input
+                            v-model="renameGroupForm.name"
+                            :aria-label="`Rename ${group.name}`"
+                            autocomplete="off"
+                            autofocus
+                        />
+                        <Button
+                            type="submit"
+                            size="sm"
+                            class="shrink-0 self-center"
+                            :disabled="renameGroupForm.processing"
+                            >Save</Button
+                        >
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            class="shrink-0 self-center"
+                            @click="cancelRename"
+                            >Cancel</Button
+                        >
+                    </form>
+                    <div v-else class="flex items-center gap-2">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            class="shrink-0 text-muted-foreground"
+                            :disabled="togglingHiddenGroupId === group.id"
+                            :aria-pressed="group.hidden"
+                            :aria-label="
+                                group.hidden
+                                    ? `Show ${group.name}`
+                                    : `Hide ${group.name}`
+                            "
+                            :title="group.hidden ? 'Hidden' : 'Visible'"
+                            @click="toggleGroupHidden(group)"
+                        >
+                            <EyeSlashIcon v-if="group.hidden" class="size-5" />
+                            <EyeIcon v-else class="size-5" />
+                        </Button>
+                        <div
+                            class="min-w-0 flex-1 truncate"
+                            :class="{ 'opacity-50': group.hidden }"
+                        >
+                            <span v-if="group.hidden" class="font-medium">{{
+                                group.name
+                            }}</span>
+                            <Link
+                                v-else
+                                :href="groupRoutes.show(group.id).url"
+                                class="font-medium hover:underline"
+                            >
+                                {{ group.name }}
+                            </Link>
+                            <span class="ml-2 text-xs text-muted-foreground"
+                                >{{ group.channels_count }} channel{{
+                                    group.channels_count === 1 ? '' : 's'
+                                }}</span
+                            >
+                        </div>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            @click="startRename(group)"
+                            >Rename</Button
+                        >
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            class="text-destructive"
+                            @click="confirmDeleteGroup = group"
+                            >Delete</Button
+                        >
+                    </div>
+                    <p
+                        v-if="
+                            renamingGroupId === group.id &&
+                            renameGroupForm.errors.name
+                        "
+                        class="text-sm text-destructive"
+                    >
+                        {{ renameGroupForm.errors.name }}
+                    </p>
+                </li>
+            </ul>
+
+            <!-- Shorts page visibility -->
+            <div class="flex items-center gap-2 rounded-xl border p-3">
                 <Button
                     type="button"
-                    variant="outline"
-                    @click="openImportDialog"
-                    >Import JSON</Button
+                    variant="ghost"
+                    size="icon-sm"
+                    class="shrink-0 text-muted-foreground"
+                    :disabled="togglingShorts"
+                    :aria-pressed="shortsHidden"
+                    :aria-label="
+                        shortsHidden ? 'Show Shorts page' : 'Hide Shorts page'
+                    "
+                    :title="shortsHidden ? 'Hidden' : 'Visible'"
+                    @click="toggleShortsHidden"
                 >
+                    <EyeSlashIcon v-if="shortsHidden" class="size-5" />
+                    <EyeIcon v-else class="size-5" />
+                </Button>
+                <div
+                    class="min-w-0 flex-1"
+                    :class="{ 'opacity-50': shortsHidden }"
+                >
+                    <span class="font-medium">Shorts page</span>
+                    <span class="ml-2 text-xs text-muted-foreground">{{
+                        shortsHidden ? 'Hidden from the sidebar' : 'In the sidebar'
+                    }}</span>
+                </div>
             </div>
-        </div>
-        <p v-if="importFileError" class="text-sm text-destructive">
-            {{ importFileError }}
-        </p>
+        </section>
 
-        <!-- No groups empty state -->
-        <div
-            v-if="groups.length === 0"
-            class="rounded-xl border border-dashed p-8 text-center text-muted-foreground"
-        >
-            <p class="mb-1 font-medium">No channel groups yet.</p>
-            <p class="text-sm">
-                <Link
-                    :href="groupRoutes.index().url"
-                    class="underline underline-offset-2"
-                    >Create a group</Link
-                >
-                before adding subscriptions.
-            </p>
-        </div>
-
-        <template v-else>
+        <template v-if="groups.length > 0">
             <!-- Add channel form -->
             <div class="flex max-w-2xl flex-col gap-4 rounded-xl border p-4">
                 <!-- Group pill-select for add form -->
@@ -400,14 +653,20 @@ const onImportFile = (e: Event) => {
                             v-for="group in groups"
                             :key="group.id"
                             type="button"
-                            class="rounded-full border px-3 py-1 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                            :class="
+                            class="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                            :class="[
                                 addGroupIds.includes(group.id)
                                     ? 'border-primary bg-primary text-primary-foreground'
-                                    : 'border-border bg-background text-foreground hover:bg-accent'
-                            "
+                                    : 'border-border bg-background text-foreground hover:bg-accent',
+                                { 'opacity-50': group.hidden },
+                            ]"
                             @click="toggleAddGroup(group.id)"
                         >
+                            <EyeSlashIcon
+                                v-if="group.hidden"
+                                class="size-3.5"
+                                aria-label="Hidden"
+                            />
                             {{ group.name }}
                         </button>
                     </div>
@@ -693,8 +952,14 @@ const onImportFile = (e: Event) => {
                     >
                         <h4
                             :id="`subscription-group-${group.id}`"
-                            class="mb-1.5 scroll-mt-6 text-xs font-semibold tracking-wider text-muted-foreground uppercase"
+                            class="mb-1.5 flex scroll-mt-6 items-center gap-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase"
+                            :class="{ 'opacity-50': group.hidden }"
                         >
+                            <EyeSlashIcon
+                                v-if="group.hidden"
+                                class="size-3.5"
+                                aria-label="Hidden"
+                            />
                             {{ group.name }} ({{ groupChannels.length }})
                         </h4>
                         <ul
@@ -848,6 +1113,37 @@ const onImportFile = (e: Event) => {
             </div>
         </template>
     </div>
+
+    <!-- Confirm delete group dialog -->
+    <Dialog
+        :open="!!confirmDeleteGroup"
+        @update:open="
+            (v) => {
+                if (!v) confirmDeleteGroup = null;
+            }
+        "
+    >
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Delete group?</DialogTitle>
+                <DialogDescription>
+                    <span class="font-medium text-foreground">{{
+                        confirmDeleteGroup?.name
+                    }}</span>
+                    will be deleted. Its channels stay subscribed through any
+                    other groups they belong to.
+                </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+                <Button variant="outline" @click="confirmDeleteGroup = null"
+                    >Cancel</Button
+                >
+                <Button variant="destructive" @click="confirmDelete"
+                    >Delete</Button
+                >
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
 
     <!-- Confirm remove dialog -->
     <Dialog

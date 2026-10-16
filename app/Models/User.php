@@ -11,9 +11,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Collection;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
-#[Fillable(['name', 'email', 'password', 'feed_cap_enabled'])]
+#[Fillable(['name', 'email', 'password', 'feed_cap_enabled', 'shorts_hidden'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -32,12 +33,30 @@ class User extends Authenticatable
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
             'feed_cap_enabled' => 'boolean',
+            'shorts_hidden' => 'boolean',
         ];
     }
 
     public function channelGroups(): HasMany
     {
         return $this->hasMany(ChannelGroup::class);
+    }
+
+    /**
+     * Channels reachable through at least one visible group. A channel that is
+     * only in hidden groups is muted. Pass group IDs to treat them as hidden too.
+     *
+     * @param  iterable<int>  $excludingGroupIds
+     * @return Collection<int, int>
+     */
+    public function visibleChannelIds(iterable $excludingGroupIds = []): Collection
+    {
+        return $this->channelGroups()
+            ->visible()
+            ->whereNotIn('channel_groups.id', $excludingGroupIds)
+            ->join('channel_group_channel as cgc', 'cgc.channel_group_id', '=', 'channel_groups.id')
+            ->distinct()
+            ->pluck('cgc.channel_id');
     }
 
     public function favoritedChannels(): BelongsToMany

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ChannelGroup;
 use App\Models\Video;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -15,26 +16,27 @@ class ShortsFeedController extends Controller
      * The Shorts feed is the mirror of `AllVideosFeedController::index`: same read,
      * `is_short` inverted, narrowed to the categories the user has not hidden.
      */
-    public function index(Request $request): Response
+    public function index(Request $request): Response|RedirectResponse
     {
         $user = $request->user();
         $userId = $user->id;
 
+        if ($user->shorts_hidden) {
+            return to_route('landing');
+        }
+
         $hiddenGroupIds = $user->hiddenShortGroups()->pluck('channel_groups.id');
 
         // A channel reached through any visible group stays in, even when one of
-        // its other groups is hidden.
-        $subscribedChannelIds = $user->channelGroups()
-            ->whereNotIn('channel_groups.id', $hiddenGroupIds)
-            ->join('channel_group_channel as cgc', 'cgc.channel_group_id', '=', 'channel_groups.id')
-            ->distinct()
-            ->pluck('cgc.channel_id');
+        // its other groups is hidden, here or app-wide.
+        $subscribedChannelIds = $user->visibleChannelIds($hiddenGroupIds);
 
         $capEnabled = (bool) $user->feed_cap_enabled;
 
         return Inertia::render('Videos/Shorts', [
             'capEnabled' => $capEnabled,
             'categories' => $user->channelGroups()
+                ->visible()
                 ->orderBy('name')
                 ->get(['id', 'name', 'icon'])
                 ->map(fn (ChannelGroup $group) => [

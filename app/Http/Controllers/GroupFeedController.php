@@ -12,9 +12,13 @@ use Inertia\Response;
 
 class GroupFeedController extends Controller
 {
-    public function show(Request $request, ChannelGroup $group): Response
+    public function show(Request $request, ChannelGroup $group): Response|RedirectResponse
     {
         $this->authorize('view', $group);
+
+        if ($group->hidden) {
+            return to_route('landing');
+        }
 
         $userId = $request->user()->id;
 

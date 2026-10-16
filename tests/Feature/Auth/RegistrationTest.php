@@ -21,5 +21,5 @@ test('new users can register', function () {
     ]);
 
     $this->assertAuthenticated();
-    $response->assertRedirect(route('groups.index', absolute: false));
+    $response->assertRedirect(route('landing', absolute: false));
 });

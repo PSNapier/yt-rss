@@ -1,6 +1,6 @@
 # Roadmap
 
-<!-- Next task number: [038] -->
+<!-- Next task number: [039] -->
 
 ## [006] Stop feed reverting to skeleton + scroll reset on tab return
 
@@ -148,37 +148,6 @@ Each feed shows at least 15 videos on first load regardless of how they fall acr
 - [ ] Videos from Older buckets appear when Today/Yesterday/Week are sparse
 - [ ] Holds with the per-channel cap both on and off
 - [ ] With fewer than 15 total available, the loop stops at the cursor end without spinning
-
----
-
-## [011] Fold group management into Subscriptions, remove Groups page
-
-**Status:** `todo`
-**Depends On:** none
-
-### Goal
-
-Group create / rename / delete / management lives inside the Subscriptions page, and the standalone Groups index page is removed.
-
-### Scope
-
-- Add a group-management section to `Subscriptions.vue` (create, rename, delete groups)
-- Remove `Groups/Index.vue` and its route/nav entry
-- Redirect or repoint any links that pointed at the groups index (sidebar "+", "Manage channels" anchors)
-
-### Technical Notes
-
-- Groups index today: `resources/js/pages/Groups/Index.vue` (create/rename via `window.prompt`, delete via `window.confirm`, plus import/export). Group feed view `Groups/Show.vue` stays
-- Entry points to update: `NavGroupFeeds.vue:21-27` "+" → point at `/subscriptions#group-management` (deep-link + scroll to the new section); `Subscriptions.vue:396-401` and empty states link to `groupRoutes.index()` → repoint to the in-page section; `Groups/Index.vue:135-139` is removed
-- Give the new group-management section an anchor id (e.g. `group-management`) with `scroll-mt` so the deep-link lands cleanly, matching the existing `subscription-group-${id}` anchor pattern
-- Import/Export lives in both pages today (`AllGroupsImportExportController`) — keep it available on Subscriptions
-- Manual because it is a page-structure/IA change with routing and design decisions; sets up `[016]` and `[017]`
-
-### Acceptance Criteria
-
-- [ ] Groups can be created, renamed, and deleted from the Subscriptions page
-- [ ] The standalone Groups index page and its route are gone
-- [ ] No dead links remain to the removed page (sidebar "+", manage-channels anchors, empty states)
 
 ---
 
@@ -651,3 +620,91 @@ At 193 channels that is 39 batches and roughly 19 seconds of deliberate pausing 
 - [x] `tests/Feature/RssFetcherTest.php` - the configured chunk size determines the pool batches
 - [x] `tests/Feature/RssFetcherTest.php` - configured timeouts reach the outbound request
 - [x] `tests/Feature/ChannelsPollCommandTest.php` - the sweep uses the sweep budget, not the request-path budget
+
+---
+
+## [038] Hide groups and the Shorts page
+
+**Status:** `next`
+**Depends On:** [011]
+**Spec:** none
+
+### Goal
+
+From the Groups section on `/subscriptions`, a user can hide any group and the Shorts page. A hidden group stays editable but is muted: gone from the sidebar, its feed URL redirects, and channels reachable only through hidden groups drop out of All Videos and Shorts. A hidden Shorts page leaves the nav and `/shorts` redirects.
+
+### Scope
+
+- Per-group hide toggle (eye / eye-slash) in the Groups section, persisted on `channel_groups`
+- Hidden groups:
+  - Removed from the sidebar group list
+  - `GET /groups/{group}` redirects to `/home`
+  - Channels in **only** hidden groups are excluded from All Videos and Shorts. A channel also in a visible group stays
+  - Not offered as a Shorts category chip
+  - Still shown on `/subscriptions` (Groups section, by-group view, Add form pills), dimmed with an eye-slash, fully editable
+  - Skipped by the `/home` resolver ("first visible group")
+- Shorts hide toggle in the Groups section, persisted per user. When hidden, the "Shorts" nav item is gone and `GET /shorts` redirects to `/home`
+- Hidden flag round-trips through all-groups import/export. Files without it import as visible
+- **Not in scope:** stopping polling. Muted channels keep being polled so unhiding is instant
+
+### Technical Notes
+
+**User flows:**
+
+- **User:** Groups section at `/subscriptions`. Hide or unhide each group and the Shorts page.
+- **User:** `/groups/{group}` for a hidden group. Redirected to `/home`.
+- **User:** `/shorts` with Shorts hidden. Redirected to `/home`.
+
+**Critical files:**
+
+- `app/Http/Controllers/ShortsFeedController.php` - pattern to follow. `:23-31` already does "a channel reached through any visible group stays in". Reuse that for All Videos and fold group-hidden into it.
+- `app/Http/Controllers/AllVideosFeedController.php` - modify. `:17-20` builds subscribed channel IDs from all groups.
+- `app/Http/Middleware/HandleInertiaRequests.php` - modify. Shared `channelGroups` at `:46-60` needs `hidden`, plus a shared `shortsHidden` for the nav.
+- `resources/js/pages/Subscriptions.vue` - modify. Toggles in the Groups section from [011], dimmed hidden groups elsewhere.
+- `app/Services/AllGroupsChannelListImporter.php` - modify. Read the hidden flag on import.
+
+**Details:**
+
+- Migrations: `channel_groups.hidden` boolean default false, `users.shorts_hidden` boolean default false
+- Group hidden is distinct from `user_hidden_short_groups` (the per-user Shorts category filter). Shorts categories exclude hidden groups entirely, the existing filter still applies to the rest
+- Toggle via `PATCH groups/{group}` (`ChannelGroupController@update`) and a small user-preference endpoint for Shorts
+- `NavGroupFeeds.vue` filters out hidden groups, `AppSidebar.vue` drops the Shorts item when `shortsHidden`
+- Extract the visible-channel-IDs query into one place (a `User` method) so All Videos, Shorts, and the `/home` resolver agree
+
+**As built (2026-10-16):**
+
+- Shared `channelGroups` is filtered server-side with a `ChannelGroup::visible()` scope rather than in `NavGroupFeeds.vue`. It is only used by the sidebar, and this keeps hidden groups out of the payload. No `hidden` key is shared
+- `User::visibleChannelIds($excludingGroupIds)` serves All Videos and Shorts (Shorts passes its category filter). `/home` uses the same `visible()` scope
+- Shorts endpoint: `PATCH /shorts/visibility` (`shorts.visibility`, `ShortsVisibilityController`). Shared prop `shortsHidden`
+- `PATCH groups/{group}` accepts `name`, `hidden`, or both
+- Import: a file without `hidden` leaves an existing same-name group's state alone. New groups default to visible
+- Hidden groups show as plain text in the Groups section, not as a link, since their feed redirects. A Shorts page row with its own eye toggle sits below the group list
+- Hiding a group or Shorts clears the client feed cache (`clearFeedCache`), the same as a cap change
+
+```mermaid
+flowchart LR
+    C[Channel] --> V{In any visible group?}
+    V -->|yes| F[In All Videos and Shorts]
+    V -->|no, only hidden groups| M[Muted, still polled]
+```
+
+### Acceptance Criteria
+
+- [x] A group can be hidden and unhidden from the Subscriptions page and stays editable while hidden
+      `tests/Feature/HiddenGroupTest.php`
+- [x] A hidden group is absent from the shared sidebar groups and its feed URL redirects to `/home`
+      `tests/Feature/HiddenGroupTest.php`
+- [x] Channels only in hidden groups are excluded from All Videos and Shorts, channels also in a visible group remain
+      `tests/Feature/AllVideosFeedTest.php`
+      `tests/Feature/ShortsFeedTest.php`
+- [x] Hidden groups are not Shorts categories
+      `tests/Feature/ShortsFeedTest.php`
+- [x] `/home` skips hidden groups and falls back to `/feed` when none are visible
+      `tests/Feature/LandingRouteTest.php`
+- [x] Shorts can be hidden, after which `/shorts` redirects to `/home` and the nav prop reflects it
+      `tests/Feature/ShortsFeedTest.php`
+- [x] The hidden flag round-trips through import/export, older files import as visible
+      `tests/Feature/AllGroupsImportExportTest.php`
+- [x] Hidden groups read as hidden (dimmed, eye-slash) on `/subscriptions` and the sidebar entries disappear [MANUAL]
+
+---

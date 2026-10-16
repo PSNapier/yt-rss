@@ -33,7 +33,7 @@ test('email can be verified', function () {
 
     Event::assertDispatched(Verified::class);
     expect($user->fresh()->hasVerifiedEmail())->toBeTrue();
-    $response->assertRedirect(route('groups.index', absolute: false).'?verified=1');
+    $response->assertRedirect(route('landing', absolute: false).'?verified=1');
 });
 
 test('email is not verified with invalid hash', function () {
@@ -78,7 +78,7 @@ test('verified user is redirected to groups from verification prompt', function 
     $response = $this->actingAs($user)->get(route('verification.notice'));
 
     Event::assertNotDispatched(Verified::class);
-    $response->assertRedirect(route('groups.index', absolute: false));
+    $response->assertRedirect(route('landing', absolute: false));
 });
 
 test('already verified user visiting verification link is redirected without firing event again', function () {
@@ -93,7 +93,7 @@ test('already verified user visiting verification link is redirected without fir
     );
 
     $this->actingAs($user)->get($verificationUrl)
-        ->assertRedirect(route('groups.index', absolute: false).'?verified=1');
+        ->assertRedirect(route('landing', absolute: false).'?verified=1');
 
     Event::assertNotDispatched(Verified::class);
     expect($user->fresh()->hasVerifiedEmail())->toBeTrue();

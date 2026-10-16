@@ -20,8 +20,9 @@ class SubscriptionController extends Controller
         $user = $request->user();
 
         $groups = $user->channelGroups()
+            ->withCount('channels')
             ->orderBy('name')
-            ->get(['id', 'name']);
+            ->get(['id', 'name', 'hidden']);
 
         $userGroupIds = $groups->pluck('id')->all();
 
@@ -53,7 +54,12 @@ class SubscriptionController extends Controller
 
         return Inertia::render('Subscriptions', [
             'channels' => $channels,
-            'groups' => $groups->map(fn ($g) => ['id' => $g->id, 'name' => $g->name])->values()->all(),
+            'groups' => $groups->map(fn (ChannelGroup $g) => [
+                'id' => $g->id,
+                'name' => $g->name,
+                'channels_count' => $g->channels_count,
+                'hidden' => $g->hidden,
+            ])->values()->all(),
         ]);
     }
 

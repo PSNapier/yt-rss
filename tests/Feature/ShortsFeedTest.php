@@ -189,3 +189,62 @@ test('excludes hidden videos', function () {
 test('the shorts page requires authentication', function () {
     $this->get(route('shorts.index'))->assertRedirect(route('login'));
 });
+
+test('channels only in hidden groups are excluded, channels also in a visible group remain', function () {
+    $user = User::factory()->create();
+    $visible = ChannelGroup::factory()->for($user)->create();
+    $hidden = ChannelGroup::factory()->for($user)->create(['hidden' => true]);
+
+    $muted = Channel::factory()->create(['last_fetched_at' => now()]);
+    $shared = Channel::factory()->create(['last_fetched_at' => now()]);
+    $hidden->channels()->attach([$muted->id, $shared->id]);
+    $visible->channels()->attach($shared);
+
+    Video::factory()->create(['channel_id' => $muted->id, 'is_short' => true]);
+    $kept = Video::factory()->create(['channel_id' => $shared->id, 'is_short' => true]);
+
+    $response = $this->actingAs($user)
+        ->get(route('shorts.index'), inertiaPartial('Videos/Shorts'));
+
+    expect(shortsFeedIds($response))->toBe([$kept->youtube_video_id]);
+});
+
+test('hidden groups are not shorts categories', function () {
+    $user = User::factory()->create();
+    $visible = ChannelGroup::factory()->for($user)->create();
+    ChannelGroup::factory()->for($user)->create(['hidden' => true]);
+
+    $this->actingAs($user)
+        ->get(route('shorts.index'))
+        ->assertInertia(fn ($page) => $page
+            ->component('Videos/Shorts')
+            ->has('categories', 1)
+            ->where('categories.0.id', $visible->id)
+        );
+});
+
+test('shorts can be hidden, which redirects the page home and reaches the nav prop', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->get(route('subscriptions.index'))
+        ->assertInertia(fn ($page) => $page->where('shortsHidden', false));
+
+    $this->actingAs($user)
+        ->patch(route('shorts.visibility'), ['hidden' => true])
+        ->assertRedirect();
+
+    expect($user->fresh()->shorts_hidden)->toBeTrue();
+
+    $this->actingAs($user)
+        ->get(route('shorts.index'))
+        ->assertRedirect(route('landing'));
+
+    $this->actingAs($user)
+        ->get(route('subscriptions.index'))
+        ->assertInertia(fn ($page) => $page->where('shortsHidden', true));
+
+    $this->actingAs($user)->patch(route('shorts.visibility'), ['hidden' => false]);
+
+    $this->actingAs($user)->get(route('shorts.index'))->assertOk();
+});

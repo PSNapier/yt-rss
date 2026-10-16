@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import {
     BoltIcon,
-    HomeIcon,
     QueueListIcon,
     VideoCameraIcon,
 } from '@heroicons/vue/24/outline';
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavGroupFeeds from '@/components/NavGroupFeeds.vue';
 import NavMain from '@/components/NavMain.vue';
@@ -17,34 +17,35 @@ import {
     SidebarHeader,
     SidebarTrigger,
 } from '@/components/ui/sidebar';
+import { landing } from '@/routes';
 import feed from '@/routes/feed';
-import groups from '@/routes/groups';
 import shorts from '@/routes/shorts';
 import subscriptions from '@/routes/subscriptions';
 import type { NavItem } from '@/types';
 
-const mainNavItems: NavItem[] = [
-    {
-        title: 'Groups',
-        href: groups.index(),
-        icon: HomeIcon,
-    },
+const page = usePage();
+
+const mainNavItems = computed<NavItem[]>(() => [
     {
         title: 'All Videos',
         href: feed.index(),
         icon: VideoCameraIcon,
     },
-    {
-        title: 'Shorts',
-        href: shorts.index(),
-        icon: BoltIcon,
-    },
+    ...(page.props.shortsHidden
+        ? []
+        : [
+              {
+                  title: 'Shorts',
+                  href: shorts.index(),
+                  icon: BoltIcon,
+              },
+          ]),
     {
         title: 'Subscriptions',
         href: subscriptions.index(),
         icon: QueueListIcon,
     },
-];
+]);
 </script>
 
 <template>
@@ -54,7 +55,7 @@ const mainNavItems: NavItem[] = [
                 class="flex items-center justify-between gap-2 group-data-[collapsible=icon]:justify-center"
             >
                 <Link
-                    :href="groups.index().url"
+                    :href="landing().url"
                     class="min-w-0 group-data-[collapsible=icon]:hidden"
                 >
                     <AppLogo />

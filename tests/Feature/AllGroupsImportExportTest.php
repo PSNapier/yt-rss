@@ -128,3 +128,37 @@ test('import rejects payload without groups array', function () {
         ->post(route('groups.import-all'), ['file' => $file])
         ->assertSessionHasErrors('file');
 });
+
+test('the hidden flag round-trips through export and import', function () {
+    $user = User::factory()->create();
+    ChannelGroup::factory()->for($user)->create(['name' => 'Muted', 'hidden' => true]);
+    ChannelGroup::factory()->for($user)->create(['name' => 'Shown']);
+
+    $exported = $this->actingAs($user)->get(route('groups.export-all'))->getContent();
+    $data = json_decode($exported, true);
+
+    expect(collect($data['groups'])->pluck('hidden', 'name')->all())
+        ->toBe(['Muted' => true, 'Shown' => false]);
+
+    $other = User::factory()->create();
+    $file = UploadedFile::fake()->createWithContent('all.json', $exported);
+
+    $this->actingAs($other)
+        ->post(route('groups.import-all'), ['file' => $file])
+        ->assertRedirect();
+
+    expect($other->channelGroups()->orderBy('name')->pluck('hidden', 'name')->all())
+        ->toEqual(['Muted' => true, 'Shown' => false]);
+});
+
+test('files without the hidden flag import as visible', function () {
+    $user = User::factory()->create();
+    $json = json_encode(['groups' => [['name' => 'Old', 'channels' => []]]]);
+    $file = UploadedFile::fake()->createWithContent('old.json', $json);
+
+    $this->actingAs($user)
+        ->post(route('groups.import-all'), ['file' => $file])
+        ->assertRedirect();
+
+    expect($user->channelGroups()->where('name', 'Old')->first()->hidden)->toBeFalse();
+});

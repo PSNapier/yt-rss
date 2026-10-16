@@ -1,5 +1,72 @@
 # Roadmap Done
 
+## [011] Fold group management into Subscriptions, remove Groups page
+
+**Status:** `done`
+**Depends On:** none
+**Spec:** none
+
+### Goal
+
+Groups are created, renamed, and deleted from a Groups section at the top of the Subscriptions page. The standalone Groups index page and the "Groups" sidebar tab are gone. Login and the sidebar logo land on a new `/home` route that redirects to the user's first group, or All Videos when there is none.
+
+### Scope
+
+- Groups section at the top of `/subscriptions`, above the Add form: create, rename, delete, plus the Import/Export controls moved over from the Groups page
+- The "No channel groups yet" empty state becomes the Groups section itself, no link out
+- New `GET /home` resolver: first group by name (sidebar order), else `/feed`
+- Fortify `home`, the sidebar logo, and the header logo point at `/home`
+- `GET /groups` redirects to `/home`. `Groups/Index.vue` is deleted
+- Remove the "Groups" main nav item and the header "Channel groups" link. The sidebar "+" next to the GROUPS label deep-links to `/subscriptions#group-management`
+- **Not in scope:** hiding groups or Shorts (that is [038]), icon and color pickers ([016], [017])
+
+### Technical Notes
+
+**User flows:**
+
+- **User:** Groups section at `/subscriptions`. Create, rename, delete groups, import and export all groups.
+- **User:** `/home`. Redirected to their first group feed, or All Videos with no groups. Login lands here.
+- **User:** `/groups`. Redirected to `/home`.
+- **User:** "+" next to the sidebar GROUPS label. Jumps to the Groups section on `/subscriptions`.
+
+**Critical files:**
+
+- `resources/js/pages/Subscriptions.vue` - modify. Add the Groups section with `id="group-management"` and `scroll-mt-6`, matching the `subscription-group-${id}` anchors. Replace the empty state at `:380-390`.
+- `resources/js/pages/Groups/Index.vue` - pattern to follow, then delete. Holds the create/rename/delete and import/export wiring to move.
+- `routes/web.php` - modify. Add `/home`, turn `groups.index` into a redirect.
+- `resources/js/components/AppSidebar.vue` - modify. Drop the "Groups" nav item, repoint the logo. `NavGroupFeeds.vue:21-27` "+" and `AppHeader.vue:58,149` also point at `groups.index`.
+- `config/fortify.php` - modify. `home` is `/groups` at `:76`.
+
+**Details:**
+
+- Route name `home` is already taken by `/` (Welcome). Name the new route `landing`
+- Replace the `window.prompt` rename and `window.confirm` delete with inline edit and the confirm dialog pattern Subscriptions already uses for removal
+- `ChannelGroupController@index` goes away, store/update/destroy stay. They redirect back to `/subscriptions`
+- Existing tests to update: `ChannelGroupIndexTest` (index view), `AuthenticationTest:22` (asserts redirect to `groups.index`)
+
+**As built (2026-10-16):**
+
+- `/home` is `LandingController` (invokable). `/groups` is a `Route::redirect` that keeps the `groups.index` name so stale links still resolve. No frontend code uses it now
+- Import/Export moved from the page header into the Groups section. Subscriptions `groups` prop gained `channels_count`
+- Welcome page's logged-in "Channel groups" link now reads "Home" and points at `/home`. The other auth redirect tests (`EmailVerificationTest`, `RegistrationTest`, `VerificationNotificationTest`) also moved to `landing`
+- The "+" is a plain `<a>` with `data-inertia-link="false"`, matching the existing `subscription-group-${id}` anchors, so the browser handles the hash scroll
+
+### Acceptance Criteria
+
+- [x] Groups can be created, renamed, and deleted from the Subscriptions page
+      `tests/Feature/ChannelGroupIndexTest.php`
+- [x] `/home` redirects to the first group by name, or `/feed` with no groups
+      `tests/Feature/LandingRouteTest.php`
+- [x] Login lands on `/home`
+      `tests/Feature/Auth/AuthenticationTest.php`
+- [x] `/groups` redirects to `/home`
+      `tests/Feature/LandingRouteTest.php`
+- [x] Import and export of all groups still work from the Subscriptions page
+      `tests/Feature/AllGroupsImportExportTest.php`
+- [x] No "Groups" sidebar tab, no header "Channel groups" link, and no links to the removed page remain [MANUAL]
+
+---
+
 ## [037] Shorts feed page
 
 **Status:** `done`
