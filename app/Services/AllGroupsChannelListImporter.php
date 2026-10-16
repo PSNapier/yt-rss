@@ -59,6 +59,12 @@ class AllGroupsChannelListImporter
                 ],
             );
 
+            // Older files carry no flag: new groups stay visible, existing ones
+            // keep their current state.
+            if (array_key_exists('hidden', $entry)) {
+                $group->update(['hidden' => (bool) $entry['hidden']]);
+            }
+
             $result = $this->groupChannelListImporter->import($group, array_values($channels));
             $groupsProcessed++;
             $added += $result['added'];

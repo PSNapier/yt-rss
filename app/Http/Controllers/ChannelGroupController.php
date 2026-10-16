@@ -5,24 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\ChannelGroup;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
-use Inertia\Response;
 
 class ChannelGroupController extends Controller
 {
-    public function index(Request $request): Response
-    {
-        $groups = $request->user()
-            ->channelGroups()
-            ->withCount('channels')
-            ->orderBy('name')
-            ->get(['id', 'name']);
-
-        return Inertia::render('Groups/Index', [
-            'groups' => $groups,
-        ]);
-    }
-
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
@@ -32,25 +17,27 @@ class ChannelGroupController extends Controller
             ],
         ]);
 
-        $group = $request->user()->channelGroups()->create($validated);
+        $request->user()->channelGroups()->create($validated);
 
-        return to_route('groups.show', $group);
+        return to_route('subscriptions.index');
     }
 
     public function update(Request $request, ChannelGroup $group): RedirectResponse
     {
         $this->authorize('update', $group);
 
+        // Rename and hide are separate controls, so either field may come alone.
         $validated = $request->validate([
             'name' => [
-                'required', 'string', 'max:100',
+                'required_without:hidden', 'string', 'max:100',
                 'unique:channel_groups,name,'.$group->id.',id,user_id,'.$request->user()->id,
             ],
+            'hidden' => ['sometimes', 'boolean'],
         ]);
 
         $group->update($validated);
 
-        return back();
+        return to_route('subscriptions.index');
     }
 
     public function destroy(Request $request, ChannelGroup $group): RedirectResponse
@@ -59,6 +46,6 @@ class ChannelGroupController extends Controller
 
         $group->delete();
 
-        return to_route('groups.index');
+        return to_route('subscriptions.index');
     }
 }

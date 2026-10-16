@@ -25,7 +25,7 @@ class AllGroupsImportExportController extends Controller
                 $query->orderBy('channels.name');
             }])
             ->orderBy('name')
-            ->get(['id', 'name']);
+            ->get(['id', 'name', 'hidden']);
 
         $favoriteIds = array_flip(
             $user->favoritedChannels()->pluck('channels.id')->all()
@@ -37,6 +37,7 @@ class AllGroupsImportExportController extends Controller
             'groups' => $groups->map(function (ChannelGroup $group) use ($favoriteIds) {
                 return [
                     'name' => $group->name,
+                    'hidden' => $group->hidden,
                     'channels' => $group->channels
                         ->map(fn (Channel $channel) => [
                             'channel_id' => $channel->channel_id,

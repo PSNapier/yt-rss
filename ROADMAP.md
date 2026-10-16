@@ -1,6 +1,6 @@
 # Roadmap
 
-<!-- Next task number: [038] -->
+<!-- Next task number: [039] -->
 
 ## [006] Stop feed reverting to skeleton + scroll reset on tab return
 
@@ -148,37 +148,6 @@ Each feed shows at least 15 videos on first load regardless of how they fall acr
 - [ ] Videos from Older buckets appear when Today/Yesterday/Week are sparse
 - [ ] Holds with the per-channel cap both on and off
 - [ ] With fewer than 15 total available, the loop stops at the cursor end without spinning
-
----
-
-## [011] Fold group management into Subscriptions, remove Groups page
-
-**Status:** `todo`
-**Depends On:** none
-
-### Goal
-
-Group create / rename / delete / management lives inside the Subscriptions page, and the standalone Groups index page is removed.
-
-### Scope
-
-- Add a group-management section to `Subscriptions.vue` (create, rename, delete groups)
-- Remove `Groups/Index.vue` and its route/nav entry
-- Redirect or repoint any links that pointed at the groups index (sidebar "+", "Manage channels" anchors)
-
-### Technical Notes
-
-- Groups index today: `resources/js/pages/Groups/Index.vue` (create/rename via `window.prompt`, delete via `window.confirm`, plus import/export). Group feed view `Groups/Show.vue` stays
-- Entry points to update: `NavGroupFeeds.vue:21-27` "+" → point at `/subscriptions#group-management` (deep-link + scroll to the new section); `Subscriptions.vue:396-401` and empty states link to `groupRoutes.index()` → repoint to the in-page section; `Groups/Index.vue:135-139` is removed
-- Give the new group-management section an anchor id (e.g. `group-management`) with `scroll-mt` so the deep-link lands cleanly, matching the existing `subscription-group-${id}` anchor pattern
-- Import/Export lives in both pages today (`AllGroupsImportExportController`) — keep it available on Subscriptions
-- Manual because it is a page-structure/IA change with routing and design decisions; sets up `[016]` and `[017]`
-
-### Acceptance Criteria
-
-- [ ] Groups can be created, renamed, and deleted from the Subscriptions page
-- [ ] The standalone Groups index page and its route are gone
-- [ ] No dead links remain to the removed page (sidebar "+", manage-channels anchors, empty states)
 
 ---
 
@@ -651,3 +620,5 @@ At 193 channels that is 39 batches and roughly 19 seconds of deliberate pausing 
 - [x] `tests/Feature/RssFetcherTest.php` - the configured chunk size determines the pool batches
 - [x] `tests/Feature/RssFetcherTest.php` - configured timeouts reach the outbound request
 - [x] `tests/Feature/ChannelsPollCommandTest.php` - the sweep uses the sweep budget, not the request-path budget
+
+---

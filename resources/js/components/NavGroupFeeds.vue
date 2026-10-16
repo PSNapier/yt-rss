@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import { PlusIcon } from '@heroicons/vue/24/outline';
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
-import { PlusIcon } from '@heroicons/vue/24/outline';
 import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { resolveGroupIcon } from '@/lib/groupIcons';
 import groups from '@/routes/groups';
+import subscriptions from '@/routes/subscriptions';
 
 const page = usePage();
 const channelGroups = computed(() => (page.props.channelGroups as any[]) ?? []);
@@ -18,13 +19,14 @@ const { isCurrentUrl } = useCurrentUrl();
             <span class="text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
                 Groups
             </span>
-            <Link
-                :href="groups.index().url"
+            <a
+                :href="`${subscriptions.index().url}#group-management`"
+                data-inertia-link="false"
                 class="flex size-5 items-center justify-center rounded text-sidebar-foreground/40 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 title="Manage groups"
             >
                 <PlusIcon class="size-3.5" />
-            </Link>
+            </a>
         </div>
 
         <SidebarMenu class="min-h-0 flex-1 gap-0.5 overflow-y-auto px-2 group-data-[collapsible=icon]:overflow-hidden">

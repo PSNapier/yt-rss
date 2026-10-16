@@ -19,7 +19,7 @@ test('users can authenticate using the login screen', function () {
     ]);
 
     $this->assertAuthenticated();
-    $response->assertRedirect(route('groups.index', absolute: false));
+    $response->assertRedirect(route('landing', absolute: false));
 });
 
 test('users with two factor enabled are redirected to two factor challenge', function () {

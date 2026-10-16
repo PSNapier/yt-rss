@@ -49,7 +49,9 @@ class HandleInertiaRequests extends Middleware
                     return [];
                 }
 
+                // Sidebar list: hidden groups are managed from /subscriptions only.
                 return $user->channelGroups()
+                    ->visible()
                     ->withCount('channels')
                     ->orderBy('name')
                     ->get(['id', 'name', 'icon'])
@@ -62,6 +64,7 @@ class HandleInertiaRequests extends Middleware
                     ->values()
                     ->all();
             },
+            'shortsHidden' => fn () => (bool) $request->user()?->shorts_hidden,
         ];
     }
 }

@@ -6,8 +6,10 @@ use App\Http\Controllers\ChannelController;
 use App\Http\Controllers\ChannelGroupController;
 use App\Http\Controllers\FeedCapController;
 use App\Http\Controllers\GroupFeedController;
+use App\Http\Controllers\LandingController;
 use App\Http\Controllers\ShortsCategoryFilterController;
 use App\Http\Controllers\ShortsFeedController;
+use App\Http\Controllers\ShortsVisibilityController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\VideoStateController;
 use App\Http\Controllers\WebSubController;
@@ -22,7 +24,8 @@ Route::get('websub/{token}', [WebSubController::class, 'verify'])->name('websub.
 Route::post('websub/{token}', [WebSubController::class, 'receive'])->name('websub.receive');
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::get('groups', [ChannelGroupController::class, 'index'])->name('groups.index');
+    Route::get('home', LandingController::class)->name('landing');
+    Route::redirect('groups', '/home')->name('groups.index');
     Route::get('groups/export-all', [AllGroupsImportExportController::class, 'exportAll'])->name('groups.export-all');
     Route::post('groups/import-all', [AllGroupsImportExportController::class, 'importAll'])->name('groups.import-all');
     Route::post('groups', [ChannelGroupController::class, 'store'])->name('groups.store');
@@ -39,6 +42,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('shorts', [ShortsFeedController::class, 'index'])->name('shorts.index');
     Route::post('shorts/categories', [ShortsCategoryFilterController::class, 'update'])->name('shorts.categories');
+    Route::patch('shorts/visibility', [ShortsVisibilityController::class, 'update'])->name('shorts.visibility');
 
     Route::get('subscriptions', [SubscriptionController::class, 'index'])->name('subscriptions.index');
     Route::post('subscriptions', [SubscriptionController::class, 'store'])->name('subscriptions.store');

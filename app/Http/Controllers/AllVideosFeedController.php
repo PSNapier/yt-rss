@@ -14,10 +14,7 @@ class AllVideosFeedController extends Controller
         $user = $request->user();
         $userId = $user->id;
 
-        $subscribedChannelIds = $user->channelGroups()
-            ->join('channel_group_channel as cgc', 'cgc.channel_group_id', '=', 'channel_groups.id')
-            ->distinct()
-            ->pluck('cgc.channel_id');
+        $subscribedChannelIds = $user->visibleChannelIds();
 
         $capEnabled = (bool) $user->feed_cap_enabled;
 

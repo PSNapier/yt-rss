@@ -106,3 +106,25 @@ test('all videos feed deduplicates channels shared across groups', function () {
     expect($response->json('props.videos.data'))->toHaveCount(1);
     Http::assertNothingSent();
 });
+
+test('channels only in hidden groups are excluded, channels also in a visible group remain', function () {
+    Http::fake();
+
+    $user = User::factory()->create();
+    $visible = ChannelGroup::factory()->for($user)->create();
+    $hidden = ChannelGroup::factory()->for($user)->create(['hidden' => true]);
+
+    $muted = Channel::factory()->create(['last_fetched_at' => now()]);
+    $shared = Channel::factory()->create(['last_fetched_at' => now()]);
+    $hidden->channels()->attach([$muted->id, $shared->id]);
+    $visible->channels()->attach($shared);
+
+    Video::factory()->create(['channel_id' => $muted->id]);
+    $kept = Video::factory()->create(['channel_id' => $shared->id]);
+
+    $response = $this->actingAs($user)
+        ->get(route('feed.index'), inertiaPartial('Videos/Feed'));
+
+    expect(collect($response->json('props.videos.data'))->pluck('youtube_video_id')->all())
+        ->toBe([$kept->youtube_video_id]);
+});
