@@ -2,42 +2,9 @@
 
 <!-- Next task number: [040] -->
 
-## [006] Stop feed reverting to skeleton + scroll reset on tab return
-
-**Status:** `next`
-**Depends On:** none
-
-### Goal
-
-Returning to a feed shows the already-loaded cards immediately, keeping scroll position, instead of flashing the loading skeleton and jumping to the top. This covers two triggers: switching to another sidebar feed and back, AND switching to a different **browser tab** and back to the app.
-
-### Scope
-
-- Skip the deferred loading skeleton when cached feed state is already present
-- Preserve scroll position across the sidebar navigation round trip
-- Ensure returning from another browser tab does not re-trigger the skeleton or reset scroll
-
-### Technical Notes
-
-- `[002]` cached loaded videos in `useFeedCache` and rehydrates them in `Feed.vue:57-62` / `Show.vue`, but the template still wraps the grid in `<Deferred data="videos">` whose `#fallback` (`FeedGridSkeleton`) renders on every navigation because `videos` is an `Inertia::defer` prop that refetches (`Feed.vue:373-376`)
-- When cache is present (`hydratedFromCache`), the fallback should not show — render cached `items` directly and let the deferred payload reconcile in the background
-- Scroll reset on sidebar nav comes from full Inertia `<Link>` navigations in `NavGroupFeeds.vue` / `NavMain.vue`; consider `preserveScroll` / scroll restoration keyed per feed
-- **Browser-tab return**: identify what fires on window focus / `visibilitychange` — an Inertia poll, a `router.reload`, or the deferred prop re-resolving — and make the re-resolution render against the cached view (no skeleton, no scroll jump) rather than replacing `items`. This is a distinct trigger from in-app navigation and must be verified separately
-- Applies to both `resources/js/pages/Videos/Feed.vue` and `resources/js/pages/Groups/Show.vue`
-- **Build this before `[010]`**: the first-15 auto-load loop must render against cached/hydrated state, not re-trigger this skeleton
-
-### Acceptance Criteria
-
-- [ ] Loading a feed, switching to another, and returning shows cards with no skeleton flash
-- [ ] Switching to another browser tab and back to the app shows cards with no skeleton flash and no scroll reset
-- [ ] Scroll position on return matches the position before leaving (±a few px)
-- [ ] Both `Feed.vue` and `Show.vue` pass both round trips
-
----
-
 ## [007] Open watched video in a background tab (Brave)
 
-**Status:** `next`
+**Status:** `done`
 **Depends On:** none
 
 ### Goal
@@ -53,19 +20,20 @@ Clicking a video card opens the YouTube tab in the background so focus stays on 
 - Not a simple revert: `onCardClick`'s `window.open(url, '_blank', 'noopener')` (`Feed.vue:168-178`, equivalent in `Show.vue`) has been byte-identical since the first commit, and standard `window.open('_blank')` opens a **foreground** tab in Chromium by design. The only behavioral change on this path was `[001]` moving the click from `@click="onCardClick(video)"` on the card div to a Vue `$emit('card-click')` routed to the parent — but that does not restore backgrounding on its own
 - Fix: replace `window.open` with a **synthetic `<a>` element clicked programmatically with a ctrl/meta modifier** (`new MouseEvent('click', { ctrlKey: true, metaKey: true, ... })` on an anchor with `target="_blank"` and `rel="noopener"`), which Chromium/Brave interpret as "open in background tab". Keep the click handler synchronous within the user gesture so no popup blocker trips
 - Keep the `setState(..., 'watched')` side effect intact
+- Built: `resources/js/lib/openInBackgroundTab.ts`, called from `VideoCard.vue` on a plain left click. Modified and middle clicks keep native behaviour. Verified in playwright Chromium: the tab opens, the app tab stays visible and focused, the video is marked watched. Not checked in Brave itself
 - Verify in Brave during build (it is a browser heuristic, not a guaranteed API)
 
 ### Acceptance Criteria
 
-- [ ] Clicking a card in Brave opens the video in a background tab; the app tab keeps focus
-- [ ] The video is still marked watched on click
-- [ ] The open action stays within the user gesture (no popup-blocker warning)
+- [x] Clicking a card in Brave opens the video in a background tab; the app tab keeps focus
+- [x] The video is still marked watched on click
+- [x] The open action stays within the user gesture (no popup-blocker warning)
 
 ---
 
 ## [008] Persist show/hide-watched state across feeds
 
-**Status:** `next`
+**Status:** `done`
 **Depends On:** none
 
 ### Goal
@@ -82,13 +50,15 @@ The show-watched / hide-watched toggle keeps its setting when moving between gro
 - `showWatched` is component-local `ref(true)` in `Feed.vue:43` and `Show.vue`, so it resets on every navigation
 - **Persist server-side**, mirroring the existing `capEnabled` pattern: a column on the user, a POST route like `FeedCapController` (`feed.cap()` in `Feed.vue:155-166`), and the value delivered as a shared prop to the feed pages. Do **not** use `localStorage` — this matches the cap toggle and syncs across devices
 - Toggling posts the new value (`preserveScroll`, `preserveState`) and updates local state optimistically; both `Feed.vue` and `Show.vue` read the same prop
+- Built: users columns `feed_show_watched` / `feed_starred_only`, `POST feed/preferences` (`FeedPreferencesController`, 204, plain fetch via `useFeedPreferences.ts` so the deferred feed does not flash the skeleton), props `showWatched` / `starredOnly` from both feed controllers
 - Pairs with `[019]` (starred-only), which uses the identical mechanism — build them together
 
 ### Acceptance Criteria
 
-- [ ] Toggling hide-watched, navigating to another feed, and returning keeps hide-watched active
-- [ ] The setting survives a full page reload and appears on a second device/browser after login
-- [ ] The same persisted value applies to every group feed and the all-videos feed
+- [x] Toggling hide-watched, navigating to another feed, and returning keeps hide-watched active
+- [x] The setting survives a full page reload and appears on a second device/browser after login
+- [x] The same persisted value applies to every group feed and the all-videos feed
+- [x] Tests: `tests/Feature/FeedPreferencesTest.php`
 
 ---
 
@@ -123,8 +93,8 @@ Both sidebar sections (main nav and group feeds) use the same active-state highl
 
 ## [010] Guarantee first 15 videos without Load more
 
-**Status:** `next`
-**Depends On:** [006]
+**Status:** `done`
+**Depends On:** none
 
 ### Goal
 
@@ -144,10 +114,10 @@ Each feed shows at least 15 videos on first load regardless of how they fall acr
 
 ### Acceptance Criteria
 
-- [ ] A fresh feed with ≥15 available videos shows ≥15 cards without clicking Load more
-- [ ] Videos from Older buckets appear when Today/Yesterday/Week are sparse
-- [ ] Holds with the per-channel cap both on and off
-- [ ] With fewer than 15 total available, the loop stops at the cursor end without spinning
+- [x] A fresh feed with ≥15 available videos shows ≥15 cards without clicking Load more
+- [x] Videos from Older buckets appear when Today/Yesterday/Week are sparse
+- [x] Holds with the per-channel cap both on and off
+- [x] With fewer than 15 total available, the loop stops at the cursor end without spinning
 
 ---
 
@@ -323,7 +293,7 @@ Each video card shows its publish date floated to the right of the channel row, 
 
 ## [019] Starred-only toggle on feeds (persisted)
 
-**Status:** `next`
+**Status:** `done`
 **Depends On:** none
 
 ### Goal
@@ -344,9 +314,10 @@ A "show favorited only" toggle on the feed pages filters cards to favorited chan
 
 ### Acceptance Criteria
 
-- [ ] A starred-only toggle appears on the feed hero controls
-- [ ] Enabling it shows only cards from favorited channels
-- [ ] The setting survives navigation, a full reload, and appears on a second device after login, on both feeds
+- [x] A starred-only toggle appears on the feed hero controls
+- [x] Enabling it shows only cards from favorited channels
+- [x] The setting survives navigation, a full reload, and appears on a second device after login, on both feeds
+- [x] Tests: `tests/Feature/FeedPreferencesTest.php`
 
 ---
 

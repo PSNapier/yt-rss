@@ -14,7 +14,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
-#[Fillable(['name', 'email', 'password', 'feed_cap_enabled', 'shorts_hidden'])]
+#[Fillable(['name', 'email', 'password', 'feed_cap_enabled', 'feed_show_watched', 'feed_starred_only', 'shorts_hidden'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -33,6 +33,8 @@ class User extends Authenticatable
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
             'feed_cap_enabled' => 'boolean',
+            'feed_show_watched' => 'boolean',
+            'feed_starred_only' => 'boolean',
             'shorts_hidden' => 'boolean',
         ];
     }

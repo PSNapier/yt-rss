@@ -5,6 +5,7 @@ import {
     StarIcon as StarIconSolid,
 } from '@heroicons/vue/24/solid';
 import { computed } from 'vue';
+import { openInBackgroundTab } from '@/lib/openInBackgroundTab';
 
 interface Channel {
     id: number;
@@ -29,11 +30,28 @@ const videoUrl = computed(
     () => `https://www.youtube.com/watch?v=${props.video.youtube_video_id}`,
 );
 
-defineEmits<{
+const emit = defineEmits<{
     (e: 'card-click', video: Video): void;
     (e: 'context-menu', event: MouseEvent, video: Video): void;
     (e: 'toggle-watched', video: Video): void;
 }>();
+
+// A plain left click opens the video in a background tab so the app keeps
+// focus. Modified and middle clicks keep the browser's native behaviour.
+const onClick = (event: MouseEvent) => {
+    if (
+        event.button === 0 &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        !event.altKey
+    ) {
+        event.preventDefault();
+        openInBackgroundTab(videoUrl.value);
+    }
+
+    emit('card-click', props.video);
+};
 
 // Temporarily disabled: set back to true to restore the custom right-click menu
 // and let the native browser context menu go away again.
@@ -55,7 +73,7 @@ const CONTEXT_MENU_ENABLED = false;
                   ? 'border-border opacity-40 hover:opacity-70'
                   : 'border-border hover:border-foreground/30'
         "
-        @click="$emit('card-click', video)"
+        @click="onClick"
         @contextmenu="
             CONTEXT_MENU_ENABLED && $emit('context-menu', $event, video)
         "

@@ -1,5 +1,45 @@
 # Roadmap Done
 
+## [006] Stop feed reverting to skeleton + scroll reset on tab return
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+Returning to a feed shows the already-loaded cards immediately, keeping scroll position, instead of flashing the loading skeleton and jumping to the top. This covers two triggers: switching to another sidebar feed and back, AND switching to a different **browser tab** and back to the app.
+
+### Scope
+
+- Skip the deferred loading skeleton when cached feed state is already present
+- Preserve scroll position across the sidebar navigation round trip
+- Ensure returning from another browser tab does not re-trigger the skeleton or reset scroll
+
+### Technical Notes
+
+- `[002]` cached loaded videos in `useFeedCache` and rehydrates them in `Feed.vue:57-62` / `Show.vue`, but the template still wraps the grid in `<Deferred data="videos">` whose `#fallback` (`FeedGridSkeleton`) renders on every navigation because `videos` is an `Inertia::defer` prop that refetches (`Feed.vue:373-376`)
+- When cache is present (`hydratedFromCache`), the fallback should not show — render cached `items` directly and let the deferred payload reconcile in the background
+- Scroll reset on sidebar nav comes from full Inertia `<Link>` navigations in `NavGroupFeeds.vue` / `NavMain.vue`; consider `preserveScroll` / scroll restoration keyed per feed
+- **Browser-tab return**: identify what fires on window focus / `visibilitychange` — an Inertia poll, a `router.reload`, or the deferred prop re-resolving — and make the re-resolution render against the cached view (no skeleton, no scroll jump) rather than replacing `items`. This is a distinct trigger from in-app navigation and must be verified separately
+- Built: `<Deferred>` replaced by `<FeedGridSkeleton v-if="items.length === 0 && !props.videos">` so cached cards render immediately. Per-feed scroll memory in `composables/useFeedScroll.ts`. Browser-tab return fires no Inertia visit, so the skeleton and scroll were already stable once the skeleton gate was fixed (verified with playwright-cli: `inertia:start` count unchanged across a tab switch)
+- Applies to both `resources/js/pages/Videos/Feed.vue` and `resources/js/pages/Groups/Show.vue`
+- **Build this before `[010]`**: the first-15 auto-load loop must render against cached/hydrated state, not re-trigger this skeleton
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** A group in the sidebar at `/groups/{group}`, or "All Videos" at `/feed`. Scroll, open another feed or another browser tab, then come back: the cards stay and the scroll position holds with no loading skeleton.
+
+### Acceptance Criteria
+
+- [x] Loading a feed, switching to another, and returning shows cards with no skeleton flash
+- [x] Switching to another browser tab and back to the app shows cards with no skeleton flash and no scroll reset
+- [x] Scroll position on return matches the position before leaving (±a few px)
+- [x] Both `Feed.vue` and `Show.vue` pass both round trips
+
+---
+
 ## [012] Replace subscription card Remove text with trash icon
 
 **Status:** `done`
@@ -67,7 +107,7 @@ Logged-in users stay authenticated for up to 90 days instead of the current defa
 
 ## [034] Pace the sweep: concurrency, spacing, then timeouts
 
-**Status:** `next`
+**Status:** `done`
 **Depends On:** [032], [033]
 
 ### Goal

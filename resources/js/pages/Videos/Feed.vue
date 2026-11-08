@@ -1,10 +1,29 @@
 <script setup lang="ts">
-import { EyeIcon, EyeSlashIcon, FunnelIcon } from '@heroicons/vue/24/outline';
-import { Deferred, Head, router, usePage } from '@inertiajs/vue3';
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import {
+    EyeIcon,
+    EyeSlashIcon,
+    FunnelIcon,
+    StarIcon,
+} from '@heroicons/vue/24/outline';
+import { Head, router, usePage } from '@inertiajs/vue3';
+import {
+    computed,
+    nextTick,
+    onMounted,
+    onUnmounted,
+    reactive,
+    ref,
+    watch,
+} from 'vue';
 import FeedGridSkeleton from '@/components/FeedGridSkeleton.vue';
 import VideoCard from '@/components/VideoCard.vue';
 import { getFeedCache, saveFeedCache } from '@/composables/useFeedCache';
+import { postFeedPreferences } from '@/composables/useFeedPreferences';
+import {
+    beginFeedScroll,
+    endFeedScroll,
+    onFeedScroll,
+} from '@/composables/useFeedScroll';
 import { postVideoState } from '@/composables/useVideoState';
 import feed from '@/routes/feed';
 import videoRoutes from '@/routes/videos';
@@ -36,15 +55,19 @@ interface CursorPaginator<T> {
 const props = defineProps<{
     videos?: CursorPaginator<Video>;
     capEnabled?: boolean;
+    showWatched?: boolean;
+    starredOnly?: boolean;
 }>();
 
 const items = reactive<Video[]>([]);
 const nextUrl = ref<string | null>(null);
 const loadingMore = ref(false);
-const showWatched = ref(true);
+const showWatched = ref(props.showWatched ?? true);
+const starredOnly = ref(props.starredOnly ?? false);
 const capOn = ref(props.capEnabled ?? false);
 
 const cacheKey = 'all';
+const MIN_VISIBLE = 15;
 // True once the feed was restored from cache, so the deferred page-one
 // payload that arrives on navigation is ignored instead of clobbering it.
 const hydratedFromCache = ref(false);
@@ -163,6 +186,21 @@ const toggleCap = () => {
     );
 };
 
+// Persist a display toggle without an Inertia visit (see useFeedPreferences).
+const toggleShowWatched = () => {
+    showWatched.value = !showWatched.value;
+    postFeedPreferences(feed.preferences().url, {
+        show_watched: showWatched.value,
+    });
+};
+
+const toggleStarredOnly = () => {
+    starredOnly.value = !starredOnly.value;
+    postFeedPreferences(feed.preferences().url, {
+        starred_only: starredOnly.value,
+    });
+};
+
 // Eye toggle on the card: flip watched <-> unwatched without opening the video.
 const onToggleWatched = (video: Video) => {
     setState(
@@ -181,9 +219,9 @@ const sentinel = ref<HTMLElement | null>(null);
 let observer: IntersectionObserver | null = null;
 const page = usePage();
 
-const loadMore = async () => {
+const loadMore = async (): Promise<boolean> => {
     if (loadingMore.value || !nextUrl.value) {
-        return;
+        return false;
     }
 
     loadingMore.value = true;
@@ -200,24 +238,28 @@ const loadMore = async () => {
         });
 
         if (!res.ok) {
-            return;
+            return false;
         }
 
         const json = await res.json();
         const data = json?.props?.videos as CursorPaginator<Video> | undefined;
 
         if (!data) {
-            return;
+            return false;
         }
 
         items.push(...data.data);
         nextUrl.value = data.next_page_url;
+
+        return true;
     } finally {
         loadingMore.value = false;
     }
 };
 
 onMounted(() => {
+    beginFeedScroll(cacheKey, nextTick);
+    window.addEventListener('scroll', onFeedScroll, { passive: true });
     document.addEventListener('click', closeCtx);
     document.addEventListener('scroll', closeCtx, { passive: true });
     observer = new IntersectionObserver((entries) => {
@@ -232,6 +274,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+    endFeedScroll();
+    window.removeEventListener('scroll', onFeedScroll);
     document.removeEventListener('click', closeCtx);
     document.removeEventListener('scroll', closeCtx);
     observer?.disconnect();
@@ -250,9 +294,11 @@ const buckets = computed(() => {
     const yesterday = startOfDay(2);
     const weekStart = startOfDay(7);
 
-    const visible = showWatched.value
-        ? items
-        : items.filter((v) => v.user_state !== 'watched');
+    const visible = items.filter(
+        (v) =>
+            (showWatched.value || v.user_state !== 'watched') &&
+            (!starredOnly.value || v.channel_is_favorite),
+    );
 
     const sections = [
         { id: 'today', label: 'Today', items: [] as Video[] },
@@ -277,6 +323,32 @@ const buckets = computed(() => {
 
     return sections.filter((s) => s.items.length > 0);
 });
+
+// Keep pulling pages until MIN_VISIBLE cards show (after the watched/starred
+// filters) or the cursor ends. A failed request stops the loop.
+const visibleCount = computed(() =>
+    buckets.value.reduce((sum, b) => sum + b.items.length, 0),
+);
+const autoFillFailed = ref(false);
+
+watch(
+    [visibleCount, nextUrl, loadingMore],
+    async () => {
+        if (
+            autoFillFailed.value ||
+            loadingMore.value ||
+            !nextUrl.value ||
+            visibleCount.value >= MIN_VISIBLE
+        ) {
+            return;
+        }
+
+        if (!(await loadMore())) {
+            autoFillFailed.value = true;
+        }
+    },
+    { immediate: true },
+);
 </script>
 
 <template>
@@ -351,13 +423,36 @@ const buckets = computed(() => {
                         type="button"
                         :class="[
                             'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
+                            starredOnly
+                                ? 'bg-white'
+                                : 'bg-white/10 text-white/90 hover:text-white',
+                        ]"
+                        :style="starredOnly ? 'color: var(--cherry)' : ''"
+                        :aria-pressed="starredOnly"
+                        :title="
+                            starredOnly
+                                ? 'Showing starred channels only'
+                                : 'Showing all channels'
+                        "
+                        @click="toggleStarredOnly"
+                    >
+                        <StarIcon class="size-[15px]" />
+                        <span>{{
+                            starredOnly ? 'Starred only' : 'All channels'
+                        }}</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        :class="[
+                            'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
                             showWatched
                                 ? 'bg-white'
                                 : 'bg-white/10 text-white/90 hover:text-white',
                         ]"
                         :style="showWatched ? 'color: var(--cherry)' : ''"
                         :aria-pressed="showWatched"
-                        @click="showWatched = !showWatched"
+                        @click="toggleShowWatched"
                     >
                         <component
                             :is="showWatched ? EyeIcon : EyeSlashIcon"
@@ -370,11 +465,14 @@ const buckets = computed(() => {
                 </div>
             </div>
 
-            <Deferred data="videos">
-                <template #fallback>
-                    <FeedGridSkeleton :count="8" />
-                </template>
+            <!-- Skeleton only while nothing is loaded or cached. Cached cards
+                 render immediately and the deferred payload reconciles quietly. -->
+            <FeedGridSkeleton
+                v-if="items.length === 0 && !props.videos"
+                :count="8"
+            />
 
+            <template v-else>
                 <!-- Empty state -->
                 <div
                     v-if="items.length === 0"
@@ -430,7 +528,7 @@ const buckets = computed(() => {
                         </div>
                     </section>
                 </template>
-            </Deferred>
+            </template>
 
             <div ref="sentinel" class="h-10" />
             <FeedGridSkeleton v-if="loadingMore" :count="4" class="mt-4" />

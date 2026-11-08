@@ -20,6 +20,8 @@ class AllVideosFeedController extends Controller
 
         return Inertia::render('Videos/Feed', [
             'capEnabled' => $capEnabled,
+            'showWatched' => (bool) $user->feed_show_watched,
+            'starredOnly' => (bool) $user->feed_starred_only,
             'videos' => Inertia::defer(function () use ($subscribedChannelIds, $userId, $capEnabled) {
                 // Pure DB read: ingestion is push-driven (WebSub) plus the scheduled poll paths.
                 return Video::query()

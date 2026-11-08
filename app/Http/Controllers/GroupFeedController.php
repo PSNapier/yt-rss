@@ -27,6 +27,8 @@ class GroupFeedController extends Controller
         return Inertia::render('Groups/Show', [
             'group' => $group->only(['id', 'name', 'icon']),
             'capEnabled' => $capEnabled,
+            'showWatched' => (bool) $request->user()->feed_show_watched,
+            'starredOnly' => (bool) $request->user()->feed_starred_only,
             'videos' => Inertia::defer(function () use ($group, $userId, $capEnabled) {
                 // Pure DB read: ingestion is push-driven (WebSub) plus the scheduled poll paths.
                 return Video::query()
