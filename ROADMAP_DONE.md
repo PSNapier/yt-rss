@@ -1,5 +1,39 @@
 # Roadmap Done
 
+## [014] Single/multi group-select toggle in Add form
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+An icon-button toggle beside "Add to groups" switches between multi-select (current behavior) and single-select, where picking a new group replaces the current one instead of adding to it.
+
+### Scope
+
+- Add an icon-button toggle next to the "Add to groups" label
+- In single-select mode, selecting a group replaces the current selection
+
+### Technical Notes
+
+- Selection state is `addGroupIds` (`Subscriptions.vue:64`) toggled by `toggleAddGroup` (`67-76`), which always adds/removes
+- Add a `multiSelect` ref; when false, `toggleAddGroup` should set `addGroupIds` to `[groupId]` (or clear if re-clicking the selected one)
+- Toggle sits inline with the `Add to groups` label, using `Squares2X2Icon` (multi) and `StopIcon` (single). Switching multi to single with several groups selected keeps only the first
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** `/subscriptions`. A small icon button beside the "Add to groups" label switches between multi-select and single-select. In single mode, picking a group replaces the current one.
+
+### Acceptance Criteria
+
+- [x] A visible toggle sits next to the "Add to groups" label
+- [x] In single mode, clicking a second group switches selection to just that group
+- [x] In multi mode, behavior is unchanged (multiple groups selectable)
+
+---
+
 ## [013] Always show the channel ID input in Add form
 
 **Status:** `done`

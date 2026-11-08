@@ -2,7 +2,9 @@
 import {
     EyeIcon,
     EyeSlashIcon,
+    Squares2X2Icon,
     StarIcon,
+    StopIcon,
     TrashIcon,
 } from '@heroicons/vue/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
@@ -156,8 +158,27 @@ const toggleShortsHidden = () => {
 const addGroupIds = ref<number[]>([]);
 const addGroupError = ref<string | null>(null);
 
+const multiSelect = ref(true);
+
+const toggleMultiSelect = () => {
+    multiSelect.value = !multiSelect.value;
+
+    if (!multiSelect.value && addGroupIds.value.length > 1) {
+        addGroupIds.value = [addGroupIds.value[0]];
+    }
+};
+
 const toggleAddGroup = (groupId: number) => {
     addGroupError.value = null;
+
+    if (!multiSelect.value) {
+        addGroupIds.value = addGroupIds.value.includes(groupId)
+            ? []
+            : [groupId];
+
+        return;
+    }
+
     const idx = addGroupIds.value.indexOf(groupId);
 
     if (idx === -1) {
@@ -652,7 +673,31 @@ const onImportFile = (e: Event) => {
             <div class="flex max-w-2xl flex-col gap-4 rounded-xl border p-4">
                 <!-- Group pill-select for add form -->
                 <div class="flex flex-col gap-2">
-                    <Label>Add to groups</Label>
+                    <div class="flex items-center gap-1">
+                        <Label>Add to groups</Label>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            class="text-muted-foreground"
+                            data-testid="group-select-mode-toggle"
+                            :aria-pressed="multiSelect"
+                            :aria-label="
+                                multiSelect
+                                    ? 'Multi-select groups (switch to single)'
+                                    : 'Single-select group (switch to multi)'
+                            "
+                            :title="
+                                multiSelect
+                                    ? 'Multi-select: click to switch to single'
+                                    : 'Single-select: click to switch to multi'
+                            "
+                            @click="toggleMultiSelect"
+                        >
+                            <Squares2X2Icon v-if="multiSelect" class="size-5" />
+                            <StopIcon v-else class="size-5" />
+                        </Button>
+                    </div>
                     <div class="flex flex-wrap gap-2">
                         <button
                             v-for="group in groups"

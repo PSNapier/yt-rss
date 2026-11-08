@@ -2,34 +2,6 @@
 
 <!-- Next task number: [044] -->
 
-## [014] Single/multi group-select toggle in Add form
-
-**Status:** `next`
-**Depends On:** none
-
-### Goal
-
-An icon-button toggle beside "Add to groups" switches between multi-select (current behavior) and single-select, where picking a new group replaces the current one instead of adding to it.
-
-### Scope
-
-- Add an icon-button toggle next to the "Add to groups" label
-- In single-select mode, selecting a group replaces the current selection
-
-### Technical Notes
-
-- Selection state is `addGroupIds` (`Subscriptions.vue:64`) toggled by `toggleAddGroup` (`67-76`), which always adds/removes
-- Add a `multiSelect` ref; when false, `toggleAddGroup` should set `addGroupIds` to `[groupId]` (or clear if re-clicking the selected one)
-- Place the toggle inline with the `<Label>Add to groups</Label>` at `409-410`; pick a pair of Heroicons that read as multi vs single (e.g. squares vs single square)
-
-### Acceptance Criteria
-
-- [ ] A visible toggle sits next to the "Add to groups" label
-- [ ] In single mode, clicking a second group switches selection to just that group
-- [ ] In multi mode, behavior is unchanged (multiple groups selectable)
-
----
-
 ## [015] Swap TikTok hero icon for a film camera icon
 
 **Status:** `next`
