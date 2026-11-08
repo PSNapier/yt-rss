@@ -35,7 +35,7 @@ class GroupFeedController extends Controller
                 'stats'
             ),
             // Group names per channel for the unsubscribe confirm modal.
-            'channelGroups' => Inertia::defer(fn () => $request->user()->channelGroupMap(), 'channelGroups'),
+            'channelGroupMap' => Inertia::defer(fn () => $request->user()->channelGroupMap(), 'channelGroupMap'),
             'videos' => Inertia::defer(function () use ($group, $userId, $capEnabled) {
                 // Pure DB read: ingestion is the scheduled channels:poll sweep.
                 return Video::query()

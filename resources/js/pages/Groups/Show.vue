@@ -74,7 +74,7 @@ const props = defineProps<{
     videos?: CursorPaginator<Video>;
     stats?: FeedStats;
     capEnabled?: boolean;
-    channelGroups?: ChannelGroupMap;
+    channelGroupMap?: ChannelGroupMap;
     showWatched?: boolean;
     starredOnly?: boolean;
 }>();
@@ -174,8 +174,10 @@ const closeCtx = () => {
 
 const openCtx = (event: MouseEvent, video: Video) => {
     event.preventDefault();
-    ctx.x = event.clientX;
-    ctx.y = event.clientY;
+    // Keep the menu on screen when opened near an edge. The card's actions
+    // button sits at its right edge, so on a phone the menu would spill off.
+    ctx.x = Math.max(8, Math.min(event.clientX, window.innerWidth - 176));
+    ctx.y = Math.max(8, Math.min(event.clientY, window.innerHeight - 136));
     ctx.videoId = video.youtube_video_id;
     ctx.open = true;
 };
@@ -268,7 +270,7 @@ const {
     confirm: confirmUnsub,
 } = useUnsubscribeMode({
     groupId: () => props.group.id,
-    channelGroups: () => props.channelGroups,
+    channelGroups: () => props.channelGroupMap,
     onRemoved: (channelIds) => {
         const gone = new Set(channelIds);
         const kept = items.filter((v) => !gone.has(v.channel.id));
@@ -466,12 +468,12 @@ const onLoadMoreClick = () => {
             <div class="flex flex-col">
                 <!-- Hero banner -->
                 <div
-                    class="flex items-end gap-[22px] rounded-t-xl rounded-b-none p-[26px_28px] text-white"
+                    class="flex flex-wrap items-end gap-x-3.5 gap-y-4 rounded-t-xl rounded-b-none p-[18px] text-white md:flex-nowrap md:gap-[22px] md:p-[26px_28px]"
                     :style="{ background: heroGradient(group.color) }"
                 >
                     <!-- Group icon tile -->
                     <div
-                        class="flex size-[92px] shrink-0 items-center justify-center rounded-xl bg-white"
+                        class="flex size-14 shrink-0 items-center justify-center rounded-xl bg-white md:size-[92px]"
                         :style="{
                             color:
                                 resolveGroupColor(group.color)?.top ??
@@ -480,24 +482,24 @@ const onLoadMoreClick = () => {
                     >
                         <component
                             :is="resolveGroupIcon(group.icon, group.name)"
-                            class="size-11"
+                            class="size-8 md:size-11"
                         />
                     </div>
 
                     <div class="min-w-0 flex-1">
                         <p
-                            class="mb-[7px] text-[12px] font-bold tracking-[0.16em] text-white/70 uppercase"
+                            class="mb-1 text-[11px] font-bold tracking-[0.16em] text-white/70 uppercase md:mb-[7px] md:text-[12px]"
                         >
                             Group
                         </p>
                         <h1
-                            class="truncate text-[40px] leading-[1.15] font-bold tracking-[-0.03em] text-white"
+                            class="truncate text-[26px] leading-[1.15] font-bold tracking-[-0.03em] text-white md:text-[40px]"
                         >
                             {{ group.name }}
                         </h1>
                     </div>
 
-                    <div class="flex shrink-0 items-center gap-[10px]">
+                    <div class="flex w-full shrink-0 items-center gap-[10px] md:w-auto">
                         <HeroToggleButton
                             :icon="UserMinusIcon"
                             :pressed="unsubActive"
@@ -643,7 +645,7 @@ const onLoadMoreClick = () => {
                 @click.stop
             >
                 <button
-                    class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                    class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm pointer-coarse:py-2.5 hover:bg-accent"
                     @click="
                         setState(ctx.videoId!, 'watched');
                         closeCtx();
@@ -652,7 +654,7 @@ const onLoadMoreClick = () => {
                     Mark watched
                 </button>
                 <button
-                    class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                    class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm pointer-coarse:py-2.5 hover:bg-accent"
                     @click="
                         setState(ctx.videoId!, null);
                         closeCtx();
@@ -661,7 +663,7 @@ const onLoadMoreClick = () => {
                     Mark unwatched
                 </button>
                 <button
-                    class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
+                    class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm pointer-coarse:py-2.5 text-destructive hover:bg-accent"
                     @click="
                         setState(ctx.videoId!, 'hidden');
                         closeCtx();
@@ -681,7 +683,7 @@ const onLoadMoreClick = () => {
             <UnsubscribeConfirmDialog
                 v-model:open="unsubDialogOpen"
                 :channels="unsubChannels"
-                :channel-groups="props.channelGroups"
+                :channel-groups="props.channelGroupMap"
                 :group="{ id: group.id, name: group.name }"
                 :processing="unsubProcessing"
                 @deselect="deselectUnsubChannel"

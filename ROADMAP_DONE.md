@@ -1,5 +1,90 @@
 # Roadmap Done
 
+## [039] Mobile audit: top bar, drop-down nav drawer, touch-friendly feeds
+
+**Status:** `done`
+**Depends On:** [009], [012], [015], [017], [018]
+**Spec:** none
+
+### Goal
+
+Below 768px, every page is fully usable on a phone held one-handed. A plain, non-sticky top bar carries the logo and site name on the left and a hamburger on the right. Tapping it drops down a drawer with every nav option as simple right-aligned text, close to the thumb. Feed cards expose their actions without hover or right-click. Built after the visual items it depends on so nothing gets restyled twice.
+
+### Scope
+
+- Mobile top bar (below 768px only): logo + "Peristalsis" left, linked to the landing page, hamburger right. Scrolls away with the page, never sticky or fixed
+- Drop-down drawer that expands down from the top bar. Reuses the existing nav (main nav, group feeds, user menu) restyled as right-aligned plain text, not a separate mobile-only menu
+- Drawer closes three ways: the hamburger turns into an X, tapping outside, and picking a link
+- Card actions on touch: watched toggle always visible, plus a small ⋯ button that opens the existing Mark watched / Mark unwatched / Hide menu
+- Feed hero on mobile: smaller icon and title, filter buttons drop to their own row underneath
+- Audit every page at phone width and fix overflow, cramped tap targets, and clipped controls: feeds, group feeds, Shorts, Subscriptions, Home, settings, and auth (login, register, password reset, 2FA, verify email)
+- NOT in scope: desktop and tablet (768px and up) layout, the sticky feed date headers (they stay sticky), reduced-motion handling, a long-press gesture
+
+### Technical Notes
+
+**User flows:**
+
+- **User (phone):** Top bar on any signed-in page. Tap the hamburger to drop down the nav, tap "All Videos", "Shorts", "Subscriptions", a group, or the account menu to go there. The drawer closes on navigation, on tap outside, or on the X.
+- **User (phone):** Video card on `/feed` or a group feed. Tap the watched toggle (top left of the thumbnail), or tap ⋯ (right end of the channel/date row) to Mark watched, Mark unwatched, or Hide.
+- **Visitor (phone):** `/login`, `/register`, and the other auth screens. Fill in and submit forms without horizontal scrolling or clipped buttons.
+
+**Critical files:**
+
+- `resources/js/components/AppSidebar.vue` - modify. Its `SidebarTrigger` (line 65) is the only open control on mobile and lives inside the sheet it opens, so a closed sheet can never be reopened. This is the "can't reach options" bug.
+- `resources/js/layouts/app/AppSidebarLayout.vue` - modify. Mount the mobile top bar and drawer here, above the page slot.
+- `resources/js/components/ui/sidebar/SidebarProvider.vue` - entry point. `isMobile` is `(max-width: 768px)` (line 22). Reuse it for the breakpoint rather than adding a second query.
+- `resources/js/components/VideoCard.vue` - modify. The watched toggle is `opacity-0 group-hover:opacity-100` (line ~72) and the menu fires on `@contextmenu` only (line 59). iOS Safari never fires contextmenu on long-press.
+- `resources/js/pages/Videos/Feed.vue` - modify. Hero banner and the card menu (`openCtx`). Mirror every change in `resources/js/pages/Groups/Show.vue`. The hero change also applies to `resources/js/pages/Videos/Shorts.vue`.
+- `resources/js/components/MobileTopBar.vue` - new. Top bar plus drop-down drawer, mounted in `AppSidebarLayout`.
+- `resources/js/composables/useMainNavItems.ts` - new. Main nav entries shared by `AppSidebar` and `MobileTopBar`.
+
+**Details:**
+
+- Mobile nav today renders `Sidebar` as a `Sheet` (`ui/sidebar/Sidebar.vue:33`). The drop-down drawer replaces that sheet below 768px. Desktop keeps the current collapsible sidebar untouched
+- Drawer animates down from the bar. Don't add `motion-reduce:` or `prefers-reduced-motion` handling (global rule)
+- `NavMain`, `NavGroupFeeds`, `NavUser` feed the drawer content. They will already carry the [009] Cherry active border and [017] group colors by the time this is built. Right-align them in the drawer without forking them
+- `AppSidebarHeader` (breadcrumb header) only renders when breadcrumbs exist. Check it doesn't stack awkwardly under the new top bar
+- Touch detection for card actions: prefer CSS (`pointer-coarse:` / `@media (hover: none)`) over JS so the toggle and ⋯ button show on phones and stay hover-only on desktop
+- Workflow: explore each page with `playwright-cli` at a phone viewport (e.g. 390x844), then fix. Record per-page audit findings and fixes in this section as they land
+
+**As built:**
+
+- `SidebarProvider` breakpoint changed to `(max-width: 767.98px)` so exactly 768px counts as desktop, matching Tailwind `md:`
+- `AppSidebar` renders the desktop `Sidebar` only when not mobile. The mobile `Sheet` is never mounted
+- `MobileTopBar` is gated with `md:hidden`, not `v-if`, so SSR markup (rendered with `isMobile = false`) matches the client and the bar does not pop in after hydration
+- Drawer reuses `NavMain`, `NavGroupFeeds`, `NavUser` unforked. Descendant selectors on the `<nav>` reverse each menu button row and right-align text. Icons keep their [017] colors on the right edge
+- Drawer closes on: hamburger/X toggle, a fixed backdrop tap, any `<a>` click inside it (covers the current page and the hash-only "Manage groups" link), and `page.url` changes (the layout is persistent)
+- Card ⋯ button sits at the right end of the card meta row. `pointer-coarse:` shows it and the watched toggle on touch and enlarges both. Desktop stays hover-only
+- Card menu position is clamped to the viewport in `openCtx` so a tap at the card's right edge does not spill off screen
+
+**Audit findings (360px, Chromium `--mobile` emulation):**
+
+| Page | Finding | Fix |
+| --- | --- | --- |
+| Feeds, group feeds, Shorts | `NavGroupFeeds` threw on every feed page | Pre-existing [043] bug: the deferred page prop `channelGroups` shadowed the shared sidebar list. Renamed to `channelGroupMap` |
+| Feeds, group feeds, Shorts | Hero icon/title too large, filters squeezed | Smaller tile and title below `md`, filters wrap to their own row |
+| Feeds, group feeds, Shorts | `FeedStatsCard` four columns clipped labels | Columns stack vertically below `md` |
+| Subscriptions | Group rows truncated names to one letter | Row wraps below `md`: name on line one, actions right-aligned on line two |
+| Home, settings, login, register, forgot/reset password, confirm password, verify email | No horizontal scroll, no clipped controls | None needed |
+| 2FA challenge | Not reached live (test account has no 2FA) | Shares `AuthLayout` with the audited auth pages |
+
+- Remaining hydration warning on mobile comes from `AppSidebar` (server renders desktop sidebar, client renders nothing). The old mobile `Sheet` had the same mismatch
+
+### Acceptance Criteria
+
+- [x] Below 768px a non-sticky top bar shows the logo + name on the left and a hamburger on the right. It scrolls away with the page [MANUAL]
+- [x] Tapping the hamburger drops down a drawer listing every nav option, right-aligned [MANUAL]
+- [x] The drawer can be reopened after closing, and closes via the X, tap outside, and link navigation [MANUAL]
+- [x] From inside a feed on a phone, every nav destination is reachable [MANUAL]
+- [x] On a touch viewport, the watched toggle and ⋯ menu are visible on cards, and the menu can mark watched, unwatched, and hide [MANUAL]
+- [x] Feed and group feed heroes stack compactly with filters on their own row on a phone [MANUAL]
+- [x] No audited page (signed-in and auth) scrolls horizontally at phone width [MANUAL]
+- [x] Desktop (768px and up) sidebar and layout are unchanged [MANUAL]
+- [ ] Drawer animation feels smooth and the right-aligned text sits within easy thumb reach [MANUAL]
+- [x] Feed pages keep the shared sidebar group list (`tests/Feature/BulkUnsubscribeTest.php`)
+
+---
+
 ## [043] Unsubscribe-select mode on feeds
 
 **Status:** `done`

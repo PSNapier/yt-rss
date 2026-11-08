@@ -58,17 +58,21 @@ const columns = computed(() => [
 
 <template>
     <div
-        class="flex overflow-hidden rounded-t-none rounded-b-xl border border-t-0 border-border bg-card"
+        class="flex flex-col overflow-hidden rounded-t-none rounded-b-xl border border-t-0 border-border bg-card md:flex-row"
         data-testid="feed-stats-card"
     >
         <!-- Most watched (2/3) -->
-        <div class="flex min-w-0 basis-2/3 border-r border-border">
+        <div
+            class="flex min-w-0 basis-2/3 flex-col border-b border-border md:flex-row md:border-r md:border-b-0"
+        >
             <div
                 v-for="(column, index) in columns"
                 :key="column.key"
                 :class="[
-                    'flex min-w-0 flex-1 flex-col gap-[10px] px-[22px] py-[18px]',
-                    index > 0 ? 'border-l border-border' : '',
+                    'flex min-w-0 flex-1 flex-col gap-2 px-4 py-3 md:gap-[10px] md:px-[22px] md:py-[18px]',
+                    index > 0
+                        ? 'border-t border-border md:border-t-0 md:border-l'
+                        : '',
                 ]"
             >
                 <span
@@ -117,7 +121,7 @@ const columns = computed(() => [
 
         <!-- Channels (1/3) -->
         <div
-            class="flex min-w-0 basis-1/3 flex-col gap-[10px] px-[22px] py-[18px]"
+            class="flex min-w-0 basis-1/3 flex-col gap-2 px-4 py-3 md:gap-[10px] md:px-[22px] md:py-[18px]"
         >
             <span
                 class="flex items-center gap-1.5 text-[12px] font-bold tracking-[0.12em] text-muted-foreground/70 uppercase"

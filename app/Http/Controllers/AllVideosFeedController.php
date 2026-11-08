@@ -25,7 +25,7 @@ class AllVideosFeedController extends Controller
             'starredOnly' => (bool) $user->feed_starred_only,
             'stats' => Inertia::defer(fn () => $feedStats->for($user, $subscribedChannelIds), 'stats'),
             // Group names per channel for the unsubscribe confirm modal.
-            'channelGroups' => Inertia::defer(fn () => $user->channelGroupMap(), 'channelGroups'),
+            'channelGroupMap' => Inertia::defer(fn () => $user->channelGroupMap(), 'channelGroupMap'),
             'videos' => Inertia::defer(function () use ($subscribedChannelIds, $userId, $capEnabled) {
                 // Pure DB read: ingestion is the scheduled channels:poll sweep.
                 return Video::query()

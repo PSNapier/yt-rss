@@ -120,7 +120,7 @@ const emit = defineEmits<{
             <button
                 v-if="!selectable"
                 type="button"
-                class="absolute top-2 left-2 z-10 rounded-full bg-black/55 p-1.5 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/75 focus-visible:opacity-100"
+                class="absolute top-2 left-2 z-10 rounded-full bg-black/55 p-1.5 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/75 focus-visible:opacity-100 pointer-coarse:p-2 pointer-coarse:opacity-100"
                 :class="{ 'opacity-100': video.user_state === 'watched' }"
                 :title="
                     video.user_state === 'watched'

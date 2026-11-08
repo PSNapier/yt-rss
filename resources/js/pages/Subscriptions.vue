@@ -577,7 +577,10 @@ const onImportFile = (e: Event) => {
                             >Cancel</Button
                         >
                     </form>
-                    <div v-else class="flex items-center gap-2">
+                    <div
+                        v-else
+                        class="flex flex-wrap items-center gap-x-2 gap-y-1 md:flex-nowrap"
+                    >
                         <Button
                             type="button"
                             variant="ghost"
@@ -597,7 +600,7 @@ const onImportFile = (e: Event) => {
                             <EyeIcon v-else class="size-5" />
                         </Button>
                         <div
-                            class="min-w-0 flex-1 truncate"
+                            class="min-w-0 flex-1 truncate max-md:basis-[calc(100%-2.5rem)]"
                             :class="{ 'opacity-50': group.hidden }"
                         >
                             <span v-if="group.hidden" class="font-medium">{{
@@ -620,6 +623,7 @@ const onImportFile = (e: Event) => {
                             type="button"
                             variant="ghost"
                             size="sm"
+                            class="max-md:ml-auto"
                             @click="startRename(group)"
                             >Rename</Button
                         >

@@ -60,7 +60,7 @@ const props = defineProps<{
     stats?: FeedStats;
     categories?: Category[];
     capEnabled?: boolean;
-    channelGroups?: ChannelGroupMap;
+    channelGroupMap?: ChannelGroupMap;
 }>();
 
 const items = reactive<Video[]>([]);
@@ -226,7 +226,7 @@ const {
     openDialog: openUnsubDialog,
     confirm: confirmUnsub,
 } = useUnsubscribeMode({
-    channelGroups: () => props.channelGroups,
+    channelGroups: () => props.channelGroupMap,
     onRemoved: (channelIds) => {
         const gone = new Set(channelIds);
         const kept = items.filter((v) => !gone.has(v.channel.id));
@@ -346,7 +346,7 @@ const buckets = computed(() => {
             <div class="flex flex-col">
                 <!-- Hero banner -->
                 <div
-                    class="flex items-end gap-[22px] rounded-t-xl rounded-b-none p-[26px_28px] text-white"
+                    class="flex flex-wrap items-end gap-x-3.5 gap-y-4 rounded-t-xl rounded-b-none p-[18px] text-white md:flex-nowrap md:gap-[22px] md:p-[26px_28px]"
                     style="
                         background: linear-gradient(
                             180deg,
@@ -356,26 +356,26 @@ const buckets = computed(() => {
                     "
                 >
                     <div
-                        class="flex size-[92px] shrink-0 items-center justify-center rounded-xl bg-white"
+                        class="flex size-14 shrink-0 items-center justify-center rounded-xl bg-white md:size-[92px]"
                         style="color: var(--cherry)"
                     >
-                        <BoltIcon class="size-11" />
+                        <BoltIcon class="size-8 md:size-11" />
                     </div>
 
                     <div class="min-w-0 flex-1">
                         <p
-                            class="mb-[7px] text-[12px] font-bold tracking-[0.16em] text-white/70 uppercase"
+                            class="mb-1 text-[11px] font-bold tracking-[0.16em] text-white/70 uppercase md:mb-[7px] md:text-[12px]"
                         >
                             Feed
                         </p>
                         <h1
-                            class="truncate text-[40px] leading-[1.15] font-bold tracking-[-0.03em] text-white"
+                            class="truncate text-[26px] leading-[1.15] font-bold tracking-[-0.03em] text-white md:text-[40px]"
                         >
                             Shorts
                         </h1>
                     </div>
 
-                    <div class="flex shrink-0 items-center gap-[10px]">
+                    <div class="flex w-full shrink-0 items-center gap-[10px] md:w-auto">
                         <HeroToggleButton
                             :icon="UserMinusIcon"
                             :pressed="unsubActive"
@@ -520,7 +520,7 @@ const buckets = computed(() => {
             <UnsubscribeConfirmDialog
                 v-model:open="unsubDialogOpen"
                 :channels="unsubChannels"
-                :channel-groups="props.channelGroups"
+                :channel-groups="props.channelGroupMap"
                 :processing="unsubProcessing"
                 @deselect="deselectUnsubChannel"
                 @confirm="confirmUnsub"

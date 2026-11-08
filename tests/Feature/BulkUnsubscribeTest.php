@@ -113,9 +113,27 @@ it('ships a channel to groups map on each feed page', function () {
     $group->channels()->attach($channel);
 
     $response = $this->actingAs($user)
-        ->get(route('feed.index'), inertiaPartial('Videos/Feed', ['channelGroups']));
+        ->get(route('feed.index'), inertiaPartial('Videos/Feed', ['channelGroupMap']));
 
-    expect($response->json('props.channelGroups'))->toBe([
+    expect($response->json('props.channelGroupMap'))->toBe([
         (string) $channel->id => [['id' => $group->id, 'name' => 'Tech']],
     ]);
 });
+
+it('keeps the shared sidebar group list intact on feed pages', function (string $route) {
+    $user = User::factory()->create();
+    $group = ChannelGroup::factory()->for($user)->create(['name' => 'Tech']);
+    $channel = Channel::factory()->create();
+    $group->channels()->attach($channel);
+
+    $params = $route === 'groups.show' ? [$group] : [];
+
+    $response = $this->actingAs($user)
+        ->get(route($route, $params), inertiaPartial(
+            $route === 'groups.show' ? 'Groups/Show' : ($route === 'shorts.index' ? 'Videos/Shorts' : 'Videos/Feed'),
+            ['channelGroups', 'channelGroupMap'],
+        ));
+
+    expect($response->json('props.channelGroups.0.id'))->toBe($group->id)
+        ->and($response->json('props.channelGroupMap'))->toHaveKey((string) $channel->id);
+})->with(['feed.index', 'groups.show', 'shorts.index']);

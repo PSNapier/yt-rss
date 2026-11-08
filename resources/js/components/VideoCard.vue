@@ -3,6 +3,7 @@ import {
     EyeIcon as EyeIconSolid,
     EyeSlashIcon as EyeSlashIconSolid,
     CheckIcon as CheckIconSolid,
+    EllipsisHorizontalIcon,
     StarIcon as StarIconSolid,
 } from '@heroicons/vue/24/solid';
 import { computed } from 'vue';
@@ -125,7 +126,7 @@ const CONTEXT_MENU_ENABLED = false;
             <button
                 v-if="!selectable"
                 type="button"
-                class="absolute top-2 left-2 z-10 rounded-full bg-black/55 p-1.5 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/75 focus-visible:opacity-100"
+                class="absolute top-2 left-2 z-10 rounded-full bg-black/55 p-1.5 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/75 focus-visible:opacity-100 pointer-coarse:p-2 pointer-coarse:opacity-100"
                 :class="{ 'opacity-100': video.user_state === 'watched' }"
                 :title="
                     video.user_state === 'watched'
@@ -188,6 +189,17 @@ const CONTEXT_MENU_ENABLED = false;
                 >
                     {{ age }}
                 </time>
+                <!-- Card menu: always shown on touch, hover-only with a mouse -->
+                <button
+                    v-if="!selectable"
+                    type="button"
+                    class="-my-1 -mr-1 flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 pointer-coarse:-my-2 pointer-coarse:size-9 pointer-coarse:opacity-100"
+                    aria-label="Video actions"
+                    aria-haspopup="menu"
+                    @click.prevent.stop="$emit('context-menu', $event, video)"
+                >
+                    <EllipsisHorizontalIcon class="size-5" />
+                </button>
             </div>
         </div>
     </a>
