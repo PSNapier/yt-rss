@@ -1,5 +1,38 @@
 # Roadmap Done
 
+## [013] Always show the channel ID input in Add form
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+The "Add by channel ID" input is always visible in the Add-to-groups section, not hidden behind a collapsible.
+
+### Scope
+
+- Un-collapse the manual channel ID input so it renders inline at all times
+
+### Technical Notes
+
+- Found already done: `Subscriptions.vue` has no `Collapsible`, `idFallbackOpen`, or chevron trigger. The form renders inline inside the groups-exist block, so no code change was needed
+- Remove the collapsible wrapper and the `idFallbackOpen` state; keep the form, hint, validation, and `submitIdForm` logic
+- The chevron icons (`ChevronDownIcon`/`ChevronUpIcon`) imports may become unused
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** `/subscriptions`. The "Add by URL, @handle, or channel ID" input and its "Add channel" button are always visible once at least one group exists.
+
+### Acceptance Criteria
+
+- [x] The channel ID input and its Add button are visible without any toggle
+- [x] Adding by ID still works and validates group selection
+- [x] No leftover collapsible trigger or unused state remains
+
+---
+
 ## [009] Unify sidebar button highlighting (Cherry accent border)
 
 **Status:** `done`

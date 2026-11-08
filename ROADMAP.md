@@ -2,33 +2,6 @@
 
 <!-- Next task number: [044] -->
 
-## [013] Always show the channel ID input in Add form
-
-**Status:** `next`
-**Depends On:** none
-
-### Goal
-
-The "Add by channel ID" input is always visible in the Add-to-groups section, not hidden behind a collapsible.
-
-### Scope
-
-- Un-collapse the manual channel ID input so it renders inline at all times
-
-### Technical Notes
-
-- Currently wrapped in `<Collapsible v-model:open="idFallbackOpen">` with a trigger button in `Subscriptions.vue:484-543`
-- Remove the collapsible wrapper and the `idFallbackOpen` state; keep the form, hint, validation, and `submitIdForm` logic
-- The chevron icons (`ChevronDownIcon`/`ChevronUpIcon`) imports may become unused
-
-### Acceptance Criteria
-
-- [ ] The channel ID input and its Add button are visible without any toggle
-- [ ] Adding by ID still works and validates group selection
-- [ ] No leftover collapsible trigger or unused state remains
-
----
-
 ## [014] Single/multi group-select toggle in Add form
 
 **Status:** `next`
