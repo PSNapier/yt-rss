@@ -7,6 +7,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
+import { sidebarNavButtonClass } from '@/lib/sidebarNav';
 import type { NavItem } from '@/types';
 
 defineProps<{
@@ -24,6 +25,7 @@ const { isCurrentUrl } = useCurrentUrl();
                     as-child
                     :is-active="isCurrentUrl(item.href)"
                     :tooltip="item.title"
+                    :class="sidebarNavButtonClass(isCurrentUrl(item.href))"
                 >
                     <Link :href="item.href">
                         <component :is="item.icon" />

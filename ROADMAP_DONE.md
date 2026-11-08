@@ -1,5 +1,40 @@
 # Roadmap Done
 
+## [009] Unify sidebar button highlighting (Cherry accent border)
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+Both sidebar sections (main nav and group feeds) use the same active-state highlight: a Cherry red accent border on a transparent background.
+
+### Scope
+
+- Apply one shared **border-only** active-highlight style (Cherry accent border, no fill) to both `NavMain` and `NavGroupFeeds`
+- Drop the current solid `bg-cherry` fill on the group-feeds active item
+
+### Technical Notes
+
+- `NavGroupFeeds.vue` used a solid `bg-cherry` fill for the active item and `NavMain.vue` used the default `SidebarMenuButton` fill. Both now call `sidebarNavButtonClass` in `resources/js/lib/sidebarNav.ts`
+- Target: **border-only** — a Cherry accent border with the normal (transparent) background, applied identically to both. Remove the solid fill entirely; when active items lose the white-on-Cherry treatment, revert their text/badge colors to the normal foreground values
+- Extract the active class set into one place (a shared const or small wrapper) so both sections stay in sync
+- Cherry is available as `border-cherry` / the `--cherry` CSS var
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** Sidebar on every page. The page you are on (All Videos, Shorts, Subscriptions, or a group) gets a Cherry red outline with no fill.
+
+### Acceptance Criteria
+
+- [x] Active items in both sidebar sections render an identical Cherry accent border with no solid fill
+- [x] Inactive items in both sections share identical styling
+- [x] The active-style definition lives in one place, not duplicated per section
+
+---
+
 ## [019] Starred-only toggle on feeds (persisted)
 
 **Status:** `done`
