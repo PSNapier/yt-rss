@@ -1,5 +1,41 @@
 # Roadmap Done
 
+## [019] Starred-only toggle on feeds (persisted)
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+A "show favorited only" toggle on the feed pages filters cards to favorited channels, and the setting persists across navigation and reloads.
+
+### Scope
+
+- Add a starred-only toggle to the feed hero controls
+- Filter the bucketed feed to favorited channels when on
+- Persist the setting like `[008]`'s show-watched toggle
+
+### Technical Notes
+
+- `channel_is_favorite` is already on each `Video` (`Feed.vue:24`, used for star display in `VideoCard.vue:53-63`), so filtering is client-side alongside the existing `showWatched` filter in `buckets` (`Feed.vue:253-255`)
+- Add the toggle next to the existing hero buttons (`Feed.vue:327-370`) using the star icons already available from `@heroicons/vue`
+- **Persist server-side**, identical mechanism to `[008]` (user column + POST route like `FeedCapController`, delivered as a prop). Build alongside `[008]`; apply to both `Feed.vue` and `Show.vue`
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** The "Starred only" / "All channels" button next to the cap and watched buttons on `/feed` and `/groups/{group}`. It limits cards to starred channels, survives reload, and follows the account to other devices.
+
+### Acceptance Criteria
+
+- [x] A starred-only toggle appears on the feed hero controls
+- [x] Enabling it shows only cards from favorited channels
+- [x] The setting survives navigation, a full reload, and appears on a second device after login, on both feeds
+- [x] Tests: `tests/Feature/FeedPreferencesTest.php`
+
+---
+
 ## [008] Persist show/hide-watched state across feeds
 
 **Status:** `done`
