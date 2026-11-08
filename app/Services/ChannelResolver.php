@@ -203,7 +203,7 @@ class ChannelResolver
         try {
             $response = Http::timeout(10)
                 ->withHeaders([
-                    'User-Agent' => (string) config('services.websub.user_agent'),
+                    'User-Agent' => (string) config('services.polling.user_agent'),
                     'Accept-Encoding' => 'gzip, deflate',
                 ])
                 ->get($this->rssUrl($channelId));

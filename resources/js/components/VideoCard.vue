@@ -6,6 +6,7 @@ import {
 } from '@heroicons/vue/24/solid';
 import { computed } from 'vue';
 import { openInBackgroundTab } from '@/lib/openInBackgroundTab';
+import { relativeAge } from '@/lib/relativeAge';
 
 interface Channel {
     id: number;
@@ -29,6 +30,8 @@ const props = defineProps<{ video: Video }>();
 const videoUrl = computed(
     () => `https://www.youtube.com/watch?v=${props.video.youtube_video_id}`,
 );
+
+const age = computed(() => relativeAge(props.video.published_at));
 
 const emit = defineEmits<{
     (e: 'card-click', video: Video): void;
@@ -63,7 +66,7 @@ const CONTEXT_MENU_ENABLED = false;
         :href="videoUrl"
         target="_blank"
         rel="noopener"
-        class="group relative block cursor-pointer overflow-hidden rounded-[5px] border-2 bg-card transition-opacity"
+        class="group relative block overflow-hidden rounded-[5px] border-2 bg-card transition-opacity"
         :class="
             video.channel_is_favorite
                 ? video.user_state === 'watched'
@@ -140,9 +143,19 @@ const CONTEXT_MENU_ENABLED = false;
                 >
                     {{ video.channel.name[0] }}
                 </span>
-                <span class="truncate text-[11px] text-muted-foreground">
+                <span
+                    class="min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
+                >
                     {{ video.channel.name }}
                 </span>
+                <time
+                    v-if="age"
+                    :datetime="video.published_at"
+                    :title="new Date(video.published_at).toLocaleString()"
+                    class="shrink-0 text-[11px] text-muted-foreground"
+                >
+                    {{ age }}
+                </time>
             </div>
         </div>
     </a>

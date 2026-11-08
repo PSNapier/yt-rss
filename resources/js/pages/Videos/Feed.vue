@@ -17,6 +17,9 @@ import {
     watch,
 } from 'vue';
 import FeedGridSkeleton from '@/components/FeedGridSkeleton.vue';
+import FeedStatsCard from '@/components/FeedStatsCard.vue';
+import type { FeedStats } from '@/components/FeedStatsCard.vue';
+import HeroToggleButton from '@/components/HeroToggleButton.vue';
 import VideoCard from '@/components/VideoCard.vue';
 import { getFeedCache, saveFeedCache } from '@/composables/useFeedCache';
 import { postFeedPreferences } from '@/composables/useFeedPreferences';
@@ -55,6 +58,7 @@ interface CursorPaginator<T> {
 
 const props = defineProps<{
     videos?: CursorPaginator<Video>;
+    stats?: FeedStats;
     capEnabled?: boolean;
     showWatched?: boolean;
     starredOnly?: boolean;
@@ -357,104 +361,72 @@ watch(
 
     <div class="flex h-full flex-1 flex-col">
         <div class="flex flex-1 flex-col gap-4 p-4 md:p-6">
-            <!-- Hero banner -->
-            <div
-                class="flex items-end gap-[22px] rounded-xl p-[26px_28px] text-white"
-                style="
-                    background: linear-gradient(
-                        180deg,
-                        var(--cherry) 0%,
-                        var(--cherry-deep) 100%
-                    );
-                "
-            >
+            <div class="flex flex-col">
+                <!-- Hero banner -->
                 <div
-                    class="flex size-[92px] shrink-0 items-center justify-center rounded-xl bg-white"
-                    style="color: var(--cherry)"
+                    class="flex items-end gap-[22px] rounded-t-xl rounded-b-none p-[26px_28px] text-white"
+                    style="
+                        background: linear-gradient(
+                            180deg,
+                            var(--cherry) 0%,
+                            var(--cherry-deep) 100%
+                        );
+                    "
                 >
-                    <FilmIcon class="size-11" />
-                </div>
+                    <div
+                        class="flex size-[92px] shrink-0 items-center justify-center rounded-xl bg-white"
+                        style="color: var(--cherry)"
+                    >
+                        <FilmIcon class="size-11" />
+                    </div>
 
-                <div class="min-w-0 flex-1">
-                    <p
-                        class="mb-[7px] text-[12px] font-bold tracking-[0.16em] text-white/70 uppercase"
-                    >
-                        Feed
-                    </p>
-                    <h1
-                        class="text-[40px] leading-none font-bold tracking-[-0.03em] text-white"
-                    >
-                        All Videos
-                    </h1>
-                </div>
+                    <div class="min-w-0 flex-1">
+                        <p
+                            class="mb-[7px] text-[12px] font-bold tracking-[0.16em] text-white/70 uppercase"
+                        >
+                            Feed
+                        </p>
+                        <h1
+                            class="truncate text-[40px] leading-[1.15] font-bold tracking-[-0.03em] text-white"
+                        >
+                            All Videos
+                        </h1>
+                    </div>
 
-                <div class="flex items-center gap-[10px]">
-                    <!-- Latest-unwatched-per-channel cap toggle -->
-                    <button
-                        type="button"
-                        :class="[
-                            'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
-                            capOn
-                                ? 'bg-white'
-                                : 'bg-white/10 text-white/90 hover:text-white',
-                        ]"
-                        :style="capOn ? 'color: var(--cherry)' : ''"
-                        :aria-pressed="capOn"
-                        :title="
-                            capOn
-                                ? 'Showing latest unwatched video per channel'
-                                : 'Showing all videos'
-                        "
-                        @click="toggleCap"
-                    >
-                        <FunnelIcon class="size-[15px]" />
-                        <span>{{ capOn ? 'Latest only' : 'All videos' }}</span>
-                    </button>
-
-                    <button
-                        type="button"
-                        :class="[
-                            'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
-                            starredOnly
-                                ? 'bg-white'
-                                : 'bg-white/10 text-white/90 hover:text-white',
-                        ]"
-                        :style="starredOnly ? 'color: var(--cherry)' : ''"
-                        :aria-pressed="starredOnly"
-                        :title="
-                            starredOnly
-                                ? 'Showing starred channels only'
-                                : 'Showing all channels'
-                        "
-                        @click="toggleStarredOnly"
-                    >
-                        <StarIcon class="size-[15px]" />
-                        <span>{{
-                            starredOnly ? 'Starred only' : 'All channels'
-                        }}</span>
-                    </button>
-
-                    <button
-                        type="button"
-                        :class="[
-                            'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
-                            showWatched
-                                ? 'bg-white'
-                                : 'bg-white/10 text-white/90 hover:text-white',
-                        ]"
-                        :style="showWatched ? 'color: var(--cherry)' : ''"
-                        :aria-pressed="showWatched"
-                        @click="toggleShowWatched"
-                    >
-                        <component
-                            :is="showWatched ? EyeIcon : EyeSlashIcon"
-                            class="size-[15px]"
+                    <div class="flex shrink-0 items-center gap-[10px]">
+                        <HeroToggleButton
+                            :icon="FunnelIcon"
+                            :pressed="capOn"
+                            :tooltip="
+                                capOn
+                                    ? 'Showing latest unwatched video per channel. Click to show all videos'
+                                    : 'Showing all videos. Click to show only the latest unwatched per channel'
+                            "
+                            @click="toggleCap"
                         />
-                        <span>{{
-                            showWatched ? 'Showing watched' : 'Hiding watched'
-                        }}</span>
-                    </button>
+                        <HeroToggleButton
+                            :icon="StarIcon"
+                            :pressed="starredOnly"
+                            :tooltip="
+                                starredOnly
+                                    ? 'Showing starred channels only. Click to show all channels'
+                                    : 'Showing all channels. Click to show starred channels only'
+                            "
+                            @click="toggleStarredOnly"
+                        />
+                        <HeroToggleButton
+                            :icon="showWatched ? EyeIcon : EyeSlashIcon"
+                            :pressed="showWatched"
+                            :tooltip="
+                                showWatched
+                                    ? 'Watched videos visible (greyed). Click to hide them'
+                                    : 'Watched videos hidden. Click to show them'
+                            "
+                            @click="toggleShowWatched"
+                        />
+                    </div>
                 </div>
+                <FeedStatsCard :stats="props.stats" />
             </div>
 
             <!-- Skeleton only while nothing is loaded or cached. Cached cards

@@ -359,7 +359,7 @@ class DiagnosePollingCommand extends Command
 
             try {
                 $response = Http::withHeaders([
-                    'User-Agent' => (string) config('services.websub.user_agent'),
+                    'User-Agent' => (string) config('services.polling.user_agent'),
                     'Accept-Language' => 'en-US,en;q=0.9',
                 ])
                     ->connectTimeout(self::GENEROUS[0])
@@ -507,7 +507,7 @@ class DiagnosePollingCommand extends Command
     protected function pollHeaders(): array
     {
         return [
-            'User-Agent' => (string) config('services.websub.user_agent'),
+            'User-Agent' => (string) config('services.polling.user_agent'),
             'Accept-Encoding' => 'gzip, deflate',
             'Accept' => 'application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8',
         ];

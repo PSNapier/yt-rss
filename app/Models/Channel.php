@@ -8,7 +8,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable(['channel_id', 'handle', 'name', 'rss_url', 'last_fetched_at', 'rss_etag', 'rss_last_modified'])]
 class Channel extends Model
@@ -32,11 +31,6 @@ class Channel extends Model
     public function videos(): HasMany
     {
         return $this->hasMany(Video::class);
-    }
-
-    public function webSubSubscription(): HasOne
-    {
-        return $this->hasOne(ChannelSubscription::class);
     }
 
     public function rssUrl(): string

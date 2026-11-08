@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ChannelGroup;
 use App\Models\Video;
+use App\Services\FeedStats;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +17,7 @@ class ShortsFeedController extends Controller
      * The Shorts feed is the mirror of `AllVideosFeedController::index`: same read,
      * `is_short` inverted, narrowed to the categories the user has not hidden.
      */
-    public function index(Request $request): Response|RedirectResponse
+    public function index(Request $request, FeedStats $feedStats): Response|RedirectResponse
     {
         $user = $request->user();
         $userId = $user->id;
@@ -47,6 +48,7 @@ class ShortsFeedController extends Controller
                 ])
                 ->values()
                 ->all(),
+            'stats' => Inertia::defer(fn () => $feedStats->for($user, $subscribedChannelIds, shorts: true), 'stats'),
             'videos' => Inertia::defer(function () use ($subscribedChannelIds, $userId, $capEnabled) {
                 return Video::query()
                     ->select([

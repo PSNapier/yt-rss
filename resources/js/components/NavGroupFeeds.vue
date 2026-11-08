@@ -4,6 +4,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
+import { resolveGroupColor } from '@/lib/groupColors';
 import { resolveGroupIcon } from '@/lib/groupIcons';
 import { sidebarNavButtonClass } from '@/lib/sidebarNav';
 import groups from '@/routes/groups';
@@ -42,7 +43,10 @@ const { isCurrentUrl } = useCurrentUrl();
                     :class="sidebarNavButtonClass(isCurrentUrl(groups.show(group.id)))"
                 >
                     <Link :href="groups.show(group.id).url">
-                        <component :is="resolveGroupIcon(group.icon, group.name)" />
+                        <component
+                            :is="resolveGroupIcon(group.icon, group.name)"
+                            :style="{ color: resolveGroupColor(group.color)?.icon }"
+                        />
                         <span class="flex-1 truncate">{{ group.name }}</span>
                         <span
                             v-if="group.channels_count !== undefined && group.channels_count > 0"

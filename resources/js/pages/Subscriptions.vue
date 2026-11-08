@@ -2,6 +2,7 @@
 import {
     EyeIcon,
     EyeSlashIcon,
+    PaintBrushIcon,
     Squares2X2Icon,
     StarIcon,
     StopIcon,
@@ -10,6 +11,7 @@ import {
 import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref, useTemplateRef } from 'vue';
+import GroupAppearanceDialog from '@/components/GroupAppearanceDialog.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,6 +32,8 @@ import subscriptions from '@/routes/subscriptions';
 interface Group {
     id: number;
     name: string;
+    icon: string | null;
+    color: string | null;
     channels_count: number;
     hidden: boolean;
 }
@@ -99,6 +103,8 @@ const submitRename = (group: Group) => {
         },
     });
 };
+
+const appearanceGroup = ref<Group | null>(null);
 
 const confirmDeleteGroup = ref<Group | null>(null);
 
@@ -617,6 +623,17 @@ const onImportFile = (e: Event) => {
                             @click="startRename(group)"
                             >Rename</Button
                         >
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            class="text-muted-foreground"
+                            :aria-label="`Edit icon and color for ${group.name}`"
+                            title="Icon and color"
+                            @click="appearanceGroup = group"
+                        >
+                            <PaintBrushIcon class="size-5" />
+                        </Button>
                         <Button
                             type="button"
                             variant="ghost"
@@ -1167,6 +1184,11 @@ const onImportFile = (e: Event) => {
             </div>
         </template>
     </div>
+
+    <GroupAppearanceDialog
+        :group="appearanceGroup"
+        @close="appearanceGroup = null"
+    />
 
     <!-- Confirm delete group dialog -->
     <Dialog

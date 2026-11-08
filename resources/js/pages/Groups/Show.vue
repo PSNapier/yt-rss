@@ -17,6 +17,9 @@ import {
     watch,
 } from 'vue';
 import FeedGridSkeleton from '@/components/FeedGridSkeleton.vue';
+import FeedStatsCard from '@/components/FeedStatsCard.vue';
+import type { FeedStats } from '@/components/FeedStatsCard.vue';
+import HeroToggleButton from '@/components/HeroToggleButton.vue';
 import VideoCard from '@/components/VideoCard.vue';
 import { getFeedCache, saveFeedCache } from '@/composables/useFeedCache';
 import { postFeedPreferences } from '@/composables/useFeedPreferences';
@@ -26,6 +29,7 @@ import {
     onFeedScroll,
 } from '@/composables/useFeedScroll';
 import { postVideoState } from '@/composables/useVideoState';
+import { heroGradient, resolveGroupColor } from '@/lib/groupColors';
 import { resolveGroupIcon } from '@/lib/groupIcons';
 import feed from '@/routes/feed';
 import subscriptions from '@/routes/subscriptions';
@@ -56,8 +60,14 @@ interface CursorPaginator<T> {
 }
 
 const props = defineProps<{
-    group: { id: number; name: string; icon: string | null };
+    group: {
+        id: number;
+        name: string;
+        icon: string | null;
+        color: string | null;
+    };
     videos?: CursorPaginator<Video>;
+    stats?: FeedStats;
     capEnabled?: boolean;
     showWatched?: boolean;
     starredOnly?: boolean;
@@ -426,18 +436,16 @@ const onLoadMoreClick = () => {
                 <!-- Hero banner -->
                 <div
                     class="flex items-end gap-[22px] rounded-t-xl rounded-b-none p-[26px_28px] text-white"
-                    style="
-                        background: linear-gradient(
-                            180deg,
-                            var(--cherry) 0%,
-                            var(--cherry-deep) 100%
-                        );
-                    "
+                    :style="{ background: heroGradient(group.color) }"
                 >
                     <!-- Group icon tile -->
                     <div
                         class="flex size-[92px] shrink-0 items-center justify-center rounded-xl bg-white"
-                        style="color: var(--cherry)"
+                        :style="{
+                            color:
+                                resolveGroupColor(group.color)?.top ??
+                                'var(--cherry)',
+                        }"
                     >
                         <component
                             :is="resolveGroupIcon(group.icon, group.name)"
@@ -452,141 +460,52 @@ const onLoadMoreClick = () => {
                             Group
                         </p>
                         <h1
-                            class="text-[40px] leading-none font-bold tracking-[-0.03em] text-white"
+                            class="truncate text-[40px] leading-[1.15] font-bold tracking-[-0.03em] text-white"
                         >
                             {{ group.name }}
                         </h1>
                     </div>
 
-                    <div class="flex items-center gap-[10px]">
-                        <!-- Latest-unwatched-per-channel cap toggle -->
-                        <button
-                            type="button"
-                            :class="[
-                                'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
+                    <div class="flex shrink-0 items-center gap-[10px]">
+                        <HeroToggleButton
+                            :icon="FunnelIcon"
+                            :pressed="capOn"
+                            :tooltip="
                                 capOn
-                                    ? 'bg-white'
-                                    : 'bg-white/10 text-white/90 hover:text-white',
-                            ]"
-                            :style="capOn ? 'color: var(--cherry)' : ''"
-                            :aria-pressed="capOn"
-                            :title="
-                                capOn
-                                    ? 'Showing latest unwatched video per channel'
-                                    : 'Showing all videos'
+                                    ? 'Showing latest unwatched video per channel. Click to show all videos'
+                                    : 'Showing all videos. Click to show only the latest unwatched per channel'
                             "
                             @click="toggleCap"
-                        >
-                            <FunnelIcon class="size-[15px]" />
-                            <span>{{
-                                capOn ? 'Latest only' : 'All videos'
-                            }}</span>
-                        </button>
-
-                        <button
-                            type="button"
-                            :class="[
-                                'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
+                        />
+                        <HeroToggleButton
+                            :icon="StarIcon"
+                            :pressed="starredOnly"
+                            :tooltip="
                                 starredOnly
-                                    ? 'bg-white'
-                                    : 'bg-white/10 text-white/90 hover:text-white',
-                            ]"
-                            :style="starredOnly ? 'color: var(--cherry)' : ''"
-                            :aria-pressed="starredOnly"
-                            :title="
-                                starredOnly
-                                    ? 'Showing starred channels only'
-                                    : 'Showing all channels'
+                                    ? 'Showing starred channels only. Click to show all channels'
+                                    : 'Showing all channels. Click to show starred channels only'
                             "
                             @click="toggleStarredOnly"
-                        >
-                            <StarIcon class="size-[15px]" />
-                            <span>{{
-                                starredOnly ? 'Starred only' : 'All channels'
-                            }}</span>
-                        </button>
-
-                        <!-- Show/hide watched toggle -->
-                        <button
-                            type="button"
-                            :class="[
-                                'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
+                        />
+                        <HeroToggleButton
+                            :icon="showWatched ? EyeIcon : EyeSlashIcon"
+                            :pressed="showWatched"
+                            :tooltip="
                                 showWatched
-                                    ? 'bg-white'
-                                    : 'bg-white/10 text-white/90 hover:text-white',
-                            ]"
-                            :style="showWatched ? 'color: var(--cherry)' : ''"
-                            :aria-pressed="showWatched"
-                            :title="
-                                showWatched
-                                    ? 'Watched videos visible (greyed)'
-                                    : 'Hide watched videos'
+                                    ? 'Watched videos visible (greyed). Click to hide them'
+                                    : 'Watched videos hidden. Click to show them'
                             "
                             @click="toggleShowWatched"
-                        >
-                            <component
-                                :is="showWatched ? EyeIcon : EyeSlashIcon"
-                                class="size-[15px]"
-                            />
-                            <span>{{
-                                showWatched
-                                    ? 'Showing watched'
-                                    : 'Hiding watched'
-                            }}</span>
-                        </button>
-
-                        <a
+                        />
+                        <HeroToggleButton
+                            :icon="WrenchIcon"
+                            tooltip="Manage channels"
                             :href="`${subscriptions.index().url}#subscription-group-${group.id}`"
-                            data-inertia-link="false"
-                            class="flex items-center gap-2 rounded-[4px] border border-white/40 bg-white/10 p-[6px_10px] text-[13px] font-medium text-white/90 transition-colors hover:text-white"
-                        >
-                            <WrenchIcon class="size-[15px]" />
-                            Manage channels
-                        </a>
+                        />
                     </div>
                 </div>
 
-                <!-- Stats card -->
-                <div
-                    class="flex overflow-hidden rounded-t-none rounded-b-xl border border-t-0 border-border bg-card"
-                >
-                    <div
-                        class="flex flex-1 flex-col gap-[10px] border-r border-border px-[22px] py-[18px]"
-                    >
-                        <span
-                            class="text-[12px] font-bold tracking-[0.12em] text-muted-foreground/70 uppercase"
-                            >Channels</span
-                        >
-                        <span
-                            class="text-[22px] font-semibold tracking-[-0.01em] text-foreground"
-                            >—</span
-                        >
-                    </div>
-                    <div
-                        class="flex flex-1 flex-col gap-[10px] border-r border-border px-[22px] py-[18px]"
-                    >
-                        <span
-                            class="text-[12px] font-bold tracking-[0.12em] text-muted-foreground/70 uppercase"
-                            >Starred</span
-                        >
-                        <span
-                            class="text-[22px] font-semibold tracking-[-0.01em] text-foreground"
-                            >—</span
-                        >
-                    </div>
-                    <div
-                        class="flex flex-1 flex-col gap-[10px] px-[22px] py-[18px]"
-                    >
-                        <span
-                            class="text-[12px] font-bold tracking-[0.12em] text-muted-foreground/70 uppercase"
-                            >Last sync</span
-                        >
-                        <span
-                            class="text-[22px] font-semibold tracking-[-0.01em] text-foreground"
-                            >—</span
-                        >
-                    </div>
-                </div>
+                <FeedStatsCard :stats="props.stats" />
             </div>
             <!-- /Hero + stats -->
 

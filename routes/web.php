@@ -13,16 +13,12 @@ use App\Http\Controllers\ShortsFeedController;
 use App\Http\Controllers\ShortsVisibilityController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\VideoStateController;
-use App\Http\Controllers\WebSubController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Features;
 
 Route::inertia('/', 'Welcome', [
     'canRegister' => Features::enabled(Features::registration()),
 ])->name('home');
-
-Route::get('websub/{token}', [WebSubController::class, 'verify'])->name('websub.verify');
-Route::post('websub/{token}', [WebSubController::class, 'receive'])->name('websub.receive');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('home', LandingController::class)->name('landing');

@@ -6,7 +6,6 @@ use App\Models\Channel;
 use App\Models\ChannelGroup;
 use App\Models\UserChannelCap;
 use App\Services\ChannelResolver;
-use App\Services\WebSubSubscriber;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -22,7 +21,7 @@ class SubscriptionController extends Controller
         $groups = $user->channelGroups()
             ->withCount('channels')
             ->orderBy('name')
-            ->get(['id', 'name', 'hidden']);
+            ->get(['id', 'name', 'icon', 'color', 'hidden']);
 
         $userGroupIds = $groups->pluck('id')->all();
 
@@ -57,13 +56,15 @@ class SubscriptionController extends Controller
             'groups' => $groups->map(fn (ChannelGroup $g) => [
                 'id' => $g->id,
                 'name' => $g->name,
+                'icon' => $g->icon,
+                'color' => $g->color,
                 'channels_count' => $g->channels_count,
                 'hidden' => $g->hidden,
             ])->values()->all(),
         ]);
     }
 
-    public function store(Request $request, ChannelResolver $resolver, WebSubSubscriber $webSub): RedirectResponse
+    public function store(Request $request, ChannelResolver $resolver): RedirectResponse
     {
         $user = $request->user();
 
@@ -110,8 +111,6 @@ class SubscriptionController extends Controller
         foreach ($groups as $group) {
             $group->channels()->syncWithoutDetaching([$channel->id]);
         }
-
-        $webSub->ensureSubscribed($channel);
 
         return back();
     }

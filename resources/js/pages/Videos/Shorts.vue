@@ -8,6 +8,9 @@ import {
 import { Deferred, Head, router, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import FeedGridSkeleton from '@/components/FeedGridSkeleton.vue';
+import FeedStatsCard from '@/components/FeedStatsCard.vue';
+import type { FeedStats } from '@/components/FeedStatsCard.vue';
+import HeroToggleButton from '@/components/HeroToggleButton.vue';
 import ShortVideoCard from '@/components/ShortVideoCard.vue';
 import { getFeedCache, saveFeedCache } from '@/composables/useFeedCache';
 import { postVideoState } from '@/composables/useVideoState';
@@ -49,6 +52,7 @@ interface CursorPaginator<T> {
 
 const props = defineProps<{
     videos?: CursorPaginator<Video>;
+    stats?: FeedStats;
     categories?: Category[];
     capEnabled?: boolean;
 }>();
@@ -309,80 +313,62 @@ const buckets = computed(() => {
 
     <div class="flex h-full flex-1 flex-col">
         <div class="flex flex-1 flex-col gap-4 p-4 md:p-6">
-            <!-- Hero banner -->
-            <div
-                class="flex items-end gap-[22px] rounded-xl p-[26px_28px] text-white"
-                style="
-                    background: linear-gradient(
-                        180deg,
-                        var(--cherry) 0%,
-                        var(--cherry-deep) 100%
-                    );
-                "
-            >
+            <div class="flex flex-col">
+                <!-- Hero banner -->
                 <div
-                    class="flex size-[92px] shrink-0 items-center justify-center rounded-xl bg-white"
-                    style="color: var(--cherry)"
+                    class="flex items-end gap-[22px] rounded-t-xl rounded-b-none p-[26px_28px] text-white"
+                    style="
+                        background: linear-gradient(
+                            180deg,
+                            var(--cherry) 0%,
+                            var(--cherry-deep) 100%
+                        );
+                    "
                 >
-                    <BoltIcon class="size-11" />
-                </div>
+                    <div
+                        class="flex size-[92px] shrink-0 items-center justify-center rounded-xl bg-white"
+                        style="color: var(--cherry)"
+                    >
+                        <BoltIcon class="size-11" />
+                    </div>
 
-                <div class="min-w-0 flex-1">
-                    <p
-                        class="mb-[7px] text-[12px] font-bold tracking-[0.16em] text-white/70 uppercase"
-                    >
-                        Feed
-                    </p>
-                    <h1
-                        class="text-[40px] leading-none font-bold tracking-[-0.03em] text-white"
-                    >
-                        Shorts
-                    </h1>
-                </div>
+                    <div class="min-w-0 flex-1">
+                        <p
+                            class="mb-[7px] text-[12px] font-bold tracking-[0.16em] text-white/70 uppercase"
+                        >
+                            Feed
+                        </p>
+                        <h1
+                            class="truncate text-[40px] leading-[1.15] font-bold tracking-[-0.03em] text-white"
+                        >
+                            Shorts
+                        </h1>
+                    </div>
 
-                <div class="flex items-center gap-[10px]">
-                    <button
-                        type="button"
-                        :class="[
-                            'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
-                            capOn
-                                ? 'bg-white'
-                                : 'bg-white/10 text-white/90 hover:text-white',
-                        ]"
-                        :style="capOn ? 'color: var(--cherry)' : ''"
-                        :aria-pressed="capOn"
-                        :title="
-                            capOn
-                                ? 'Showing latest unwatched Short per channel'
-                                : 'Showing all Shorts'
-                        "
-                        @click="toggleCap"
-                    >
-                        <FunnelIcon class="size-[15px]" />
-                        <span>{{ capOn ? 'Latest only' : 'All Shorts' }}</span>
-                    </button>
-
-                    <button
-                        type="button"
-                        :class="[
-                            'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
-                            showWatched
-                                ? 'bg-white'
-                                : 'bg-white/10 text-white/90 hover:text-white',
-                        ]"
-                        :style="showWatched ? 'color: var(--cherry)' : ''"
-                        :aria-pressed="showWatched"
-                        @click="showWatched = !showWatched"
-                    >
-                        <component
-                            :is="showWatched ? EyeIcon : EyeSlashIcon"
-                            class="size-[15px]"
+                    <div class="flex shrink-0 items-center gap-[10px]">
+                        <HeroToggleButton
+                            :icon="FunnelIcon"
+                            :pressed="capOn"
+                            :tooltip="
+                                capOn
+                                    ? 'Showing latest unwatched Short per channel. Click to show all Shorts'
+                                    : 'Showing all Shorts. Click to show only the latest unwatched per channel'
+                            "
+                            @click="toggleCap"
                         />
-                        <span>{{
-                            showWatched ? 'Showing watched' : 'Hiding watched'
-                        }}</span>
-                    </button>
+                        <HeroToggleButton
+                            :icon="showWatched ? EyeIcon : EyeSlashIcon"
+                            :pressed="showWatched"
+                            :tooltip="
+                                showWatched
+                                    ? 'Watched Shorts visible (greyed). Click to hide them'
+                                    : 'Watched Shorts hidden. Click to show them'
+                            "
+                            @click="showWatched = !showWatched"
+                        />
+                    </div>
                 </div>
+                <FeedStatsCard :stats="props.stats" />
             </div>
 
             <!-- Category chips: click to hide or show a category -->
