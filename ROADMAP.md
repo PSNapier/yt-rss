@@ -151,33 +151,6 @@ Each feed shows at least 15 videos on first load regardless of how they fall acr
 
 ---
 
-## [012] Replace subscription card Remove text with trash icon
-
-**Status:** `next`
-**Depends On:** none
-
-### Goal
-
-The per-subscription Remove control is a trash-can icon button instead of the word "Remove".
-
-### Scope
-
-- Swap the "Remove" text button for a Heroicons trash icon in both subscription list views
-
-### Technical Notes
-
-- Two identical Remove buttons exist: `Subscriptions.vue:701-708` (alpha view) and `857-864` (by-group view)
-- Use `TrashIcon` from `@heroicons/vue/24/outline`; keep `startRemove(channel)` wiring and the confirm dialog
-- Preserve accessibility: add `aria-label="Remove subscription"` since the visible text is going away
-
-### Acceptance Criteria
-
-- [ ] Both views show a trash icon button in place of the "Remove" text
-- [ ] The button keeps its destructive styling and still opens the confirm dialog
-- [ ] The icon button has an accessible label
-
----
-
 ## [013] Always show the channel ID input in Add form
 
 **Status:** `next`

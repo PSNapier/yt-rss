@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { EyeIcon, EyeSlashIcon, StarIcon } from '@heroicons/vue/24/outline';
+import {
+    EyeIcon,
+    EyeSlashIcon,
+    StarIcon,
+    TrashIcon,
+} from '@heroicons/vue/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref, useTemplateRef } from 'vue';
@@ -932,11 +937,13 @@ const onImportFile = (e: Event) => {
                         </div>
                         <Button
                             variant="ghost"
-                            size="sm"
+                            size="icon"
                             class="shrink-0 self-start text-destructive sm:mt-0.5"
+                            aria-label="Remove subscription"
+                            title="Remove subscription"
                             @click="startRemove(channel)"
                         >
-                            Remove
+                            <TrashIcon class="size-5" />
                         </Button>
                     </li>
                 </ul>
@@ -1094,11 +1101,13 @@ const onImportFile = (e: Event) => {
                                 </div>
                                 <Button
                                     variant="ghost"
-                                    size="sm"
+                                    size="icon"
                                     class="shrink-0 self-start text-destructive sm:mt-0.5"
+                                    aria-label="Remove subscription"
+                                    title="Remove subscription"
                                     @click="startRemove(channel)"
                                 >
-                                    Remove
+                                    <TrashIcon class="size-5" />
                                 </Button>
                             </li>
                         </ul>

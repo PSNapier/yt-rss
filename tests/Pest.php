@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Tests\TestCase;
 
 /*
@@ -16,7 +18,7 @@ use Tests\TestCase;
 
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
-    ->in('Feature');
+    ->in('Feature', 'Browser');
 
 /*
 |--------------------------------------------------------------------------
@@ -61,8 +63,8 @@ function something()
  */
 function inertiaPartial(string $component, array $only = ['videos']): array
 {
-    $version = app(App\Http\Middleware\HandleInertiaRequests::class)
-        ->version(Illuminate\Http\Request::create('/'));
+    $version = app(HandleInertiaRequests::class)
+        ->version(Request::create('/'));
 
     return array_filter([
         'X-Inertia' => 'true',
