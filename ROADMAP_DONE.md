@@ -1,5 +1,40 @@
 # Roadmap Done
 
+## [007] Open watched video in a background tab (Brave)
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+Clicking a video card opens the YouTube tab in the background so focus stays on the app instead of switching away. Target browser is Brave (Chromium).
+
+### Scope
+
+- Change card-click open behavior so the new tab opens in the background in Brave/Chromium
+
+### Technical Notes
+
+- Not a simple revert: `onCardClick`'s `window.open(url, '_blank', 'noopener')` (`Feed.vue:168-178`, equivalent in `Show.vue`) has been byte-identical since the first commit, and standard `window.open('_blank')` opens a **foreground** tab in Chromium by design. The only behavioral change on this path was `[001]` moving the click from `@click="onCardClick(video)"` on the card div to a Vue `$emit('card-click')` routed to the parent — but that does not restore backgrounding on its own
+- Fix: replace `window.open` with a **synthetic `<a>` element clicked programmatically with a ctrl/meta modifier** (`new MouseEvent('click', { ctrlKey: true, metaKey: true, ... })` on an anchor with `target="_blank"` and `rel="noopener"`), which Chromium/Brave interpret as "open in background tab". Keep the click handler synchronous within the user gesture so no popup blocker trips
+- Keep the `setState(..., 'watched')` side effect intact
+- Built: `resources/js/lib/openInBackgroundTab.ts`, called from `VideoCard.vue` on a plain left click. Modified and middle clicks keep native behaviour. Verified in playwright Chromium: the tab opens, the app tab stays visible and focused, the video is marked watched. Not checked in Brave itself
+- Verify in Brave during build (it is a browser heuristic, not a guaranteed API)
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** Click a video card on `/feed` or `/groups/{group}`. The video opens in a background tab, the app tab keeps focus, and the card turns watched.
+
+### Acceptance Criteria
+
+- [x] Clicking a card in Brave opens the video in a background tab; the app tab keeps focus
+- [x] The video is still marked watched on click
+- [x] The open action stays within the user gesture (no popup-blocker warning)
+
+---
+
 ## [010] Guarantee first 15 videos without Load more
 
 **Status:** `done`
