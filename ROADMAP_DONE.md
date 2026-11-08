@@ -1,5 +1,76 @@
 # Roadmap Done
 
+## [043] Unsubscribe-select mode on feeds
+
+**Status:** `done`
+**Depends On:** [040]
+**Spec:** none
+
+### Goal
+
+On any feed, the user turns on an unsubscribe mode, clicks videos to select their channels, then removes them all at once. A confirm modal lists the channels and the feeds each one leaves, and lets the user drop channels from the batch or narrow each one to the current group before confirming.
+
+### Scope
+
+- New icon-only hero toggle (per [040]) on All Videos, group feeds, and Shorts: "Unsubscribe mode"
+- In the mode, clicking a video toggles selection of its **channel**, not the video. Every card from a selected channel shows a selected state (Cherry ring + check badge). Clicking does not open the video. Card hover actions and the context menu are off
+- A fixed bottom action bar shows the selected channel count, "Clear", "Remove subscriptions", and "Done" (exits the mode)
+- "Remove subscriptions" opens a confirm modal:
+  - One row per selected channel: avatar, name, and the groups it belongs to
+  - Per-row remove (X) to drop the channel from the batch
+  - Per-row scope control on group feeds: "Everywhere" (default) or "This group only". On All Videos and Shorts, scope is always everywhere and the control is hidden
+  - Summary of affected feeds (each group that loses at least one channel)
+  - Confirm is disabled when the list is empty
+- On confirm, one request applies the batch, removed channels' videos leave the feed, cache entries for affected feeds are cleared, and the mode exits
+- Leaving the page or turning the mode off clears the selection
+- NOT in scope: undo, the Subscriptions page
+
+### Technical Notes
+
+**User flows:**
+
+- **User:** Hero toggle on `/feed`, `/groups/{group}`, `/shorts`. Turn on unsubscribe mode, click videos to select or deselect channels, click "Remove subscriptions".
+- **User:** Bottom action bar: "Clear", "Remove subscriptions", "Done".
+- **User:** Confirm modal. Remove rows, set each to everywhere or this group, confirm or cancel.
+
+**Critical files:**
+
+- `app/Http/Controllers/SubscriptionController.php` - modify. `destroy` (line 215) detaches one channel from all user groups. Add a bulk action next to it.
+- `routes/web.php` - modify. Add bulk `DELETE subscriptions` named `subscriptions.destroy-many`.
+- `resources/js/pages/Groups/Show.vue`, `resources/js/pages/Videos/Feed.vue`, `resources/js/pages/Videos/Shorts.vue` - modify. Mode state, card click interception, action bar, modal.
+- `resources/js/components/VideoCard.vue`, `resources/js/components/ShortVideoCard.vue` - modify. Add `selectable` and `selected` props. Selected styling, suppress open on click.
+- `resources/js/composables/useUnsubscribeMode.ts`, `resources/js/components/UnsubscribeConfirmDialog.vue`, `resources/js/components/UnsubscribeActionBar.vue` - new.
+- `app/Http/Requests/BulkUnsubscribeRequest.php` - new.
+- `resources/js/components/ui/dialog/` - pattern to follow for the confirm modal.
+
+**Details:**
+
+- Bulk request body: `items: [{ channel_id, scope: 'everywhere' | 'group', group_id? }]`. Validate in a Form Request: every channel sits in one of the user's groups, `group_id` belongs to the user and is required when `scope = group`. Wrap in a transaction
+- Share the detach logic between `destroy` and the bulk action so the two paths do not drift
+- The modal needs each selected channel's group names. Ship a per-page `channelGroups` map (`channel_id => [{id, name}]`) once rather than adding groups to every video in the payload
+- After success, invalidate the client feed cache (cache-first render from `3f05b59`) for every affected feed
+- Extract the mode and modal into a `useUnsubscribeMode` composable and `UnsubscribeConfirmDialog.vue` shared by the three pages
+- Built: the action bar is its own `UnsubscribeActionBar.vue`. It is `fixed`, not `sticky`, because the layout `<main>` clips overflow and breaks sticky against the window scroll
+- Built: `ShortVideoCard.vue` got the same `selectable`/`selected` props, since Shorts does not use `VideoCard`
+- Built: `channelGroups` is a deferred prop from `User::channelGroupMap()` on all three feed controllers. Request validation lives in `BulkUnsubscribeRequest`
+- Built: on success, `forgetFeedCache()` drops `all`, `shorts`, and every affected `group:{id}` key
+
+### Acceptance Criteria
+
+- [x] Bulk endpoint removes each channel everywhere or from one group per its scope
+      `tests/Feature/BulkUnsubscribeTest.php::it removes channels by scope`
+- [x] Bulk endpoint rejects channels or groups the user does not own
+      `tests/Feature/BulkUnsubscribeTest.php::it rejects foreign channels and groups`
+- [x] Single `DELETE subscriptions/{channel}` behavior is unchanged
+      `tests/Feature/BulkUnsubscribeTest.php::it keeps single destroy behavior`
+- [x] In the mode, clicking a video selects its channel and marks every card from that channel. Clicking again deselects [MANUAL]
+- [x] In the mode, clicking a video does not open it [MANUAL]
+- [x] The modal lists channels with their groups, allows removing rows, and disables confirm when empty [MANUAL]
+- [x] On a group feed, a row set to "This group only" leaves the channel in its other groups [MANUAL]
+- [x] After confirm, removed channels' videos leave the feed and the mode exits [MANUAL]
+
+---
+
 ## [042] Feed stats card: Most Watched + Channel count, actually populated
 
 **Status:** `done`

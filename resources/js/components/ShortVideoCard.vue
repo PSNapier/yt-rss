@@ -2,6 +2,7 @@
 import {
     EyeIcon as EyeIconSolid,
     EyeSlashIcon as EyeSlashIconSolid,
+    CheckIcon as CheckIconSolid,
     StarIcon as StarIconSolid,
 } from '@heroicons/vue/24/solid';
 import { computed, ref, watch } from 'vue';
@@ -23,7 +24,12 @@ interface Video {
     channel: Channel;
 }
 
-const props = defineProps<{ video: Video }>();
+const props = defineProps<{
+    video: Video;
+    /** Unsubscribe mode: a click selects the channel instead of opening. */
+    selectable?: boolean;
+    selected?: boolean;
+}>();
 
 const videoUrl = computed(
     () => `https://www.youtube.com/shorts/${props.video.youtube_video_id}`,
@@ -49,28 +55,47 @@ const thumbnailUrl = computed(() => {
     return `https://i.ytimg.com/vi/${props.video.youtube_video_id}/oardefault.jpg`;
 });
 
-defineEmits<{
+const onClick = (event: MouseEvent) => {
+    if (props.selectable) {
+        event.preventDefault();
+        emit('select', props.video);
+
+        return;
+    }
+
+    emit('card-click', props.video);
+};
+
+const emit = defineEmits<{
     (e: 'card-click', video: Video): void;
+    (e: 'select', video: Video): void;
     (e: 'toggle-watched', video: Video): void;
 }>();
 </script>
 
 <template>
     <a
-        :href="videoUrl"
-        target="_blank"
-        rel="noopener"
-        class="group relative block cursor-pointer overflow-hidden rounded-[5px] border-2 bg-card transition-opacity"
-        :class="
+        :href="selectable ? undefined : videoUrl"
+        :target="selectable ? undefined : '_blank'"
+        :rel="selectable ? undefined : 'noopener'"
+        :role="selectable ? 'button' : undefined"
+        :tabindex="selectable ? 0 : undefined"
+        :aria-pressed="selectable ? selected : undefined"
+        class="group relative block overflow-hidden rounded-[5px] border-2 bg-card transition-opacity"
+        :class="[
+            selected
+                ? 'ring-[3px] ring-cherry ring-offset-2 ring-offset-background'
+                : '',
             video.channel_is_favorite
                 ? video.user_state === 'watched'
                     ? 'border-[#d4a824] opacity-40 hover:opacity-70'
                     : 'border-[#d4a824]'
                 : video.user_state === 'watched'
                   ? 'border-border opacity-40 hover:opacity-70'
-                  : 'border-border hover:border-foreground/30'
-        "
-        @click="$emit('card-click', video)"
+                  : 'border-border hover:border-foreground/30',
+        ]"
+        @click="onClick"
+        @keydown.enter.space.prevent="selectable && emit('select', video)"
     >
         <!-- Vertical thumbnail -->
         <div class="relative aspect-[9/16] bg-muted">
@@ -84,7 +109,16 @@ defineEmits<{
             />
 
             <!-- Watched toggle — top left -->
+            <!-- Selected badge (unsubscribe mode) -->
+            <div
+                v-if="selectable && selected"
+                class="pointer-events-none absolute top-2 left-2 z-10 rounded-full bg-cherry p-1 text-white shadow-md"
+                aria-hidden="true"
+            >
+                <CheckIconSolid class="size-4" />
+            </div>
             <button
+                v-if="!selectable"
                 type="button"
                 class="absolute top-2 left-2 z-10 rounded-full bg-black/55 p-1.5 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/75 focus-visible:opacity-100"
                 :class="{ 'opacity-100': video.user_state === 'watched' }"

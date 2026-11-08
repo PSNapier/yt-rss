@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\BulkUnsubscribeRequest;
 use App\Models\Channel;
 use App\Models\ChannelGroup;
 use App\Models\UserChannelCap;
 use App\Services\ChannelResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -226,11 +228,42 @@ class SubscriptionController extends Controller
             abort(404);
         }
 
-        $groups = ChannelGroup::whereIn('id', $channelGroupIds)->get();
-        foreach ($groups as $group) {
-            $group->channels()->detach($channel->id);
-        }
+        $this->detachFromGroups($channel->id, $channelGroupIds);
 
         return back();
+    }
+
+    /**
+     * Unsubscribe from several channels at once. Each item removes its channel
+     * from all of the user's groups, or from one group when `scope = group`.
+     */
+    public function destroyMany(BulkUnsubscribeRequest $request): RedirectResponse
+    {
+        $userGroupIds = $request->user()->channelGroups()->pluck('id')->all();
+
+        DB::transaction(function () use ($request, $userGroupIds) {
+            foreach ($request->validated('items') as $item) {
+                $groupIds = $item['scope'] === 'group'
+                    ? [(int) $item['group_id']]
+                    : $userGroupIds;
+
+                $this->detachFromGroups((int) $item['channel_id'], $groupIds);
+            }
+        });
+
+        return back();
+    }
+
+    /**
+     * Shared by `destroy` and `destroyMany` so both paths detach the same way.
+     *
+     * @param  array<int>  $groupIds  Group IDs already scoped to the user.
+     */
+    private function detachFromGroups(int $channelId, array $groupIds): void
+    {
+        DB::table('channel_group_channel')
+            ->where('channel_id', $channelId)
+            ->whereIn('channel_group_id', $groupIds)
+            ->delete();
     }
 }

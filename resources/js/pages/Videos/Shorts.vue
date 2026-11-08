@@ -4,6 +4,7 @@ import {
     EyeIcon,
     EyeSlashIcon,
     FunnelIcon,
+    UserMinusIcon,
 } from '@heroicons/vue/24/outline';
 import { Deferred, Head, router, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
@@ -12,7 +13,11 @@ import FeedStatsCard from '@/components/FeedStatsCard.vue';
 import type { FeedStats } from '@/components/FeedStatsCard.vue';
 import HeroToggleButton from '@/components/HeroToggleButton.vue';
 import ShortVideoCard from '@/components/ShortVideoCard.vue';
+import UnsubscribeActionBar from '@/components/UnsubscribeActionBar.vue';
+import UnsubscribeConfirmDialog from '@/components/UnsubscribeConfirmDialog.vue';
 import { getFeedCache, saveFeedCache } from '@/composables/useFeedCache';
+import { useUnsubscribeMode } from '@/composables/useUnsubscribeMode';
+import type { ChannelGroupMap } from '@/composables/useUnsubscribeMode';
 import { postVideoState } from '@/composables/useVideoState';
 import { resolveGroupIcon } from '@/lib/groupIcons';
 import feed from '@/routes/feed';
@@ -55,6 +60,7 @@ const props = defineProps<{
     stats?: FeedStats;
     categories?: Category[];
     capEnabled?: boolean;
+    channelGroups?: ChannelGroupMap;
 }>();
 
 const items = reactive<Video[]>([]);
@@ -204,6 +210,30 @@ const onToggleWatched = (video: Video) => {
     );
 };
 
+// Unsubscribe-select mode: a card click selects its channel for removal.
+const {
+    active: unsubActive,
+    count: unsubCount,
+    selectedChannels: unsubChannels,
+    dialogOpen: unsubDialogOpen,
+    processing: unsubProcessing,
+    toggleMode: toggleUnsubMode,
+    exit: exitUnsubMode,
+    clear: clearUnsub,
+    isSelected: isChannelSelected,
+    toggleChannel: toggleUnsubChannel,
+    deselect: deselectUnsubChannel,
+    openDialog: openUnsubDialog,
+    confirm: confirmUnsub,
+} = useUnsubscribeMode({
+    channelGroups: () => props.channelGroups,
+    onRemoved: (channelIds) => {
+        const gone = new Set(channelIds);
+        const kept = items.filter((v) => !gone.has(v.channel.id));
+        items.splice(0, items.length, ...kept);
+    },
+});
+
 const onCardClick = (video: Video) => {
     if (video.user_state !== 'watched') {
         setState(video.youtube_video_id, 'watched');
@@ -347,6 +377,16 @@ const buckets = computed(() => {
 
                     <div class="flex shrink-0 items-center gap-[10px]">
                         <HeroToggleButton
+                            :icon="UserMinusIcon"
+                            :pressed="unsubActive"
+                            :tooltip="
+                                unsubActive
+                                    ? 'Unsubscribe mode on. Click to turn it off'
+                                    : 'Unsubscribe mode. Click Shorts to select channels to remove'
+                            "
+                            @click="toggleUnsubMode"
+                        />
+                        <HeroToggleButton
                             :icon="FunnelIcon"
                             :pressed="capOn"
                             :tooltip="
@@ -454,6 +494,11 @@ const buckets = computed(() => {
                                 v-for="video in bucket.items"
                                 :key="video.youtube_video_id"
                                 :video="video"
+                                :selectable="unsubActive"
+                                :selected="isChannelSelected(video.channel.id)"
+                                @select="
+                                    (v: Video) => toggleUnsubChannel(v.channel)
+                                "
                                 @card-click="onCardClick"
                                 @toggle-watched="onToggleWatched"
                             />
@@ -464,6 +509,22 @@ const buckets = computed(() => {
 
             <div ref="sentinel" class="h-10" />
             <FeedGridSkeleton v-if="loadingMore" :count="4" class="mt-4" />
+            <UnsubscribeActionBar
+                v-if="unsubActive"
+                :count="unsubCount"
+                @clear="clearUnsub"
+                @remove="openUnsubDialog"
+                @exit="exitUnsubMode"
+            />
+
+            <UnsubscribeConfirmDialog
+                v-model:open="unsubDialogOpen"
+                :channels="unsubChannels"
+                :channel-groups="props.channelGroups"
+                :processing="unsubProcessing"
+                @deselect="deselectUnsubChannel"
+                @confirm="confirmUnsub"
+            />
         </div>
     </div>
 </template>

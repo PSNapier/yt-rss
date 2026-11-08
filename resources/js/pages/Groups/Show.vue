@@ -3,6 +3,7 @@ import {
     EyeIcon,
     EyeSlashIcon,
     FunnelIcon,
+    UserMinusIcon,
     StarIcon,
     WrenchIcon,
 } from '@heroicons/vue/24/outline';
@@ -20,6 +21,8 @@ import FeedGridSkeleton from '@/components/FeedGridSkeleton.vue';
 import FeedStatsCard from '@/components/FeedStatsCard.vue';
 import type { FeedStats } from '@/components/FeedStatsCard.vue';
 import HeroToggleButton from '@/components/HeroToggleButton.vue';
+import UnsubscribeActionBar from '@/components/UnsubscribeActionBar.vue';
+import UnsubscribeConfirmDialog from '@/components/UnsubscribeConfirmDialog.vue';
 import VideoCard from '@/components/VideoCard.vue';
 import { getFeedCache, saveFeedCache } from '@/composables/useFeedCache';
 import { postFeedPreferences } from '@/composables/useFeedPreferences';
@@ -28,6 +31,8 @@ import {
     endFeedScroll,
     onFeedScroll,
 } from '@/composables/useFeedScroll';
+import { useUnsubscribeMode } from '@/composables/useUnsubscribeMode';
+import type { ChannelGroupMap } from '@/composables/useUnsubscribeMode';
 import { postVideoState } from '@/composables/useVideoState';
 import { heroGradient, resolveGroupColor } from '@/lib/groupColors';
 import { resolveGroupIcon } from '@/lib/groupIcons';
@@ -69,6 +74,7 @@ const props = defineProps<{
     videos?: CursorPaginator<Video>;
     stats?: FeedStats;
     capEnabled?: boolean;
+    channelGroups?: ChannelGroupMap;
     showWatched?: boolean;
     starredOnly?: boolean;
 }>();
@@ -244,6 +250,31 @@ const onToggleWatched = (video: Video) => {
         video.user_state === 'watched' ? null : 'watched',
     );
 };
+
+// Unsubscribe-select mode: a card click selects its channel for removal.
+const {
+    active: unsubActive,
+    count: unsubCount,
+    selectedChannels: unsubChannels,
+    dialogOpen: unsubDialogOpen,
+    processing: unsubProcessing,
+    toggleMode: toggleUnsubMode,
+    exit: exitUnsubMode,
+    clear: clearUnsub,
+    isSelected: isChannelSelected,
+    toggleChannel: toggleUnsubChannel,
+    deselect: deselectUnsubChannel,
+    openDialog: openUnsubDialog,
+    confirm: confirmUnsub,
+} = useUnsubscribeMode({
+    groupId: () => props.group.id,
+    channelGroups: () => props.channelGroups,
+    onRemoved: (channelIds) => {
+        const gone = new Set(channelIds);
+        const kept = items.filter((v) => !gone.has(v.channel.id));
+        items.splice(0, items.length, ...kept);
+    },
+});
 
 const onCardClick = (video: Video) => {
     if (video.user_state !== 'watched') {
@@ -468,6 +499,16 @@ const onLoadMoreClick = () => {
 
                     <div class="flex shrink-0 items-center gap-[10px]">
                         <HeroToggleButton
+                            :icon="UserMinusIcon"
+                            :pressed="unsubActive"
+                            :tooltip="
+                                unsubActive
+                                    ? 'Unsubscribe mode on. Click to turn it off'
+                                    : 'Unsubscribe mode. Click videos to select channels to remove'
+                            "
+                            @click="toggleUnsubMode"
+                        />
+                        <HeroToggleButton
                             :icon="FunnelIcon"
                             :pressed="capOn"
                             :tooltip="
@@ -567,6 +608,11 @@ const onLoadMoreClick = () => {
                                 v-for="video in bucket.items"
                                 :key="video.youtube_video_id"
                                 :video="video"
+                                :selectable="unsubActive"
+                                :selected="isChannelSelected(video.channel.id)"
+                                @select="
+                                    (v: Video) => toggleUnsubChannel(v.channel)
+                                "
                                 @card-click="onCardClick"
                                 @toggle-watched="onToggleWatched"
                                 @context-menu="openCtx"
@@ -624,6 +670,23 @@ const onLoadMoreClick = () => {
                     Hide
                 </button>
             </div>
+            <UnsubscribeActionBar
+                v-if="unsubActive"
+                :count="unsubCount"
+                @clear="clearUnsub"
+                @remove="openUnsubDialog"
+                @exit="exitUnsubMode"
+            />
+
+            <UnsubscribeConfirmDialog
+                v-model:open="unsubDialogOpen"
+                :channels="unsubChannels"
+                :channel-groups="props.channelGroups"
+                :group="{ id: group.id, name: group.name }"
+                :processing="unsubProcessing"
+                @deselect="deselectUnsubChannel"
+                @confirm="confirmUnsub"
+            />
         </div>
     </div>
 </template>

@@ -49,6 +49,8 @@ class ShortsFeedController extends Controller
                 ->values()
                 ->all(),
             'stats' => Inertia::defer(fn () => $feedStats->for($user, $subscribedChannelIds, shorts: true), 'stats'),
+            // Group names per channel for the unsubscribe confirm modal.
+            'channelGroups' => Inertia::defer(fn () => $user->channelGroupMap(), 'channelGroups'),
             'videos' => Inertia::defer(function () use ($subscribedChannelIds, $userId, $capEnabled) {
                 return Video::query()
                     ->select([

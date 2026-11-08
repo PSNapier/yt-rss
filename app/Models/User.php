@@ -61,6 +61,26 @@ class User extends Authenticatable
             ->pluck('cgc.channel_id');
     }
 
+    /**
+     * Every subscribed channel mapped to the user's groups it sits in, keyed by
+     * channel ID: `[channel_id => [['id' => ..., 'name' => ...], ...]]`.
+     *
+     * @return array<int, list<array{id: int, name: string}>>
+     */
+    public function channelGroupMap(): array
+    {
+        return $this->channelGroups()
+            ->join('channel_group_channel as cgc', 'cgc.channel_group_id', '=', 'channel_groups.id')
+            ->orderBy('channel_groups.name')
+            ->get(['cgc.channel_id', 'channel_groups.id', 'channel_groups.name'])
+            ->groupBy('channel_id')
+            ->map(fn (Collection $rows) => $rows
+                ->map(fn ($row) => ['id' => (int) $row->id, 'name' => $row->name])
+                ->values()
+                ->all())
+            ->all();
+    }
+
     public function favoritedChannels(): BelongsToMany
     {
         return $this->belongsToMany(Channel::class, 'user_channel_favorites')
