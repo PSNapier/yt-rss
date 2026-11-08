@@ -1,6 +1,6 @@
 # Roadmap
 
-<!-- Next task number: [040] -->
+<!-- Next task number: [044] -->
 
 ## [009] Unify sidebar button highlighting (Cherry accent border)
 
@@ -370,7 +370,6 @@ Below 768px, every page is fully usable on a phone held one-handed. A plain, non
 - Card actions on touch: watched toggle always visible, plus a small ⋯ button that opens the existing Mark watched / Mark unwatched / Hide menu
 - Feed hero on mobile: smaller icon and title, filter buttons drop to their own row underneath
 - Audit every page at phone width and fix overflow, cramped tap targets, and clipped controls: feeds, group feeds, Shorts, Subscriptions, Home, settings, and auth (login, register, password reset, 2FA, verify email)
-- Install Pest browser testing and add phone-viewport browser tests
 - NOT in scope: desktop and tablet (768px and up) layout, the sticky feed date headers (they stay sticky), reduced-motion handling, a long-press gesture
 
 ### Technical Notes
@@ -396,27 +395,239 @@ Below 768px, every page is fully usable on a phone held one-handed. A plain, non
 - `NavMain`, `NavGroupFeeds`, `NavUser` feed the drawer content. They will already carry the [009] Cherry active border and [017] group colors by the time this is built. Right-align them in the drawer without forking them
 - `AppSidebarHeader` (breadcrumb header) only renders when breadcrumbs exist. Check it doesn't stack awkwardly under the new top bar
 - Touch detection for card actions: prefer CSS (`pointer-coarse:` / `@media (hover: none)`) over JS so the toggle and ⋯ button show on phones and stay hover-only on desktop
-- Pest browser testing isn't installed yet: no `pestphp/pest-plugin-browser` in `composer.json`, no `playwright` in `package.json`, no `tests/Browser/`. Add them as part of this item
-- Workflow: explore each page with `playwright-cli` at a phone viewport (e.g. 390x844), fix, then codify the flows as Pest browser tests. Record per-page audit findings and fixes in this section as they land
+- Workflow: explore each page with `playwright-cli` at a phone viewport (e.g. 390x844), then fix. Record per-page audit findings and fixes in this section as they land
 
 ### Acceptance Criteria
 
-- [ ] Below 768px a non-sticky top bar shows the logo + name on the left and a hamburger on the right. It scrolls away with the page
-      `tests/Browser/MobileNavTest.php::it shows the mobile top bar on a phone viewport`
-- [ ] Tapping the hamburger drops down a drawer listing every nav option, right-aligned
-      `tests/Browser/MobileNavTest.php::it opens the drawer with every nav option`
-- [ ] The drawer can be reopened after closing, and closes via the X, tap outside, and link navigation
-      `tests/Browser/MobileNavTest.php::it closes the drawer via x, outside tap, and navigation`
-      `tests/Browser/MobileNavTest.php::it reopens the drawer after closing`
-- [ ] From inside a feed on a phone, every nav destination is reachable
-      `tests/Browser/MobileNavTest.php::it reaches every destination from a feed`
-- [ ] On a touch viewport, the watched toggle and ⋯ menu are visible on cards, and the menu can mark watched, unwatched, and hide
-      `tests/Browser/MobileFeedTest.php::it exposes card actions on touch`
-- [ ] Feed and group feed heroes stack compactly with filters on their own row on a phone
-      `tests/Browser/MobileFeedTest.php::it renders the hero without horizontal overflow`
-- [ ] No audited page (signed-in and auth) scrolls horizontally at phone width
-      `tests/Browser/MobileSmokeTest.php::it has no horizontal overflow on phone width`
+- [ ] Below 768px a non-sticky top bar shows the logo + name on the left and a hamburger on the right. It scrolls away with the page [MANUAL]
+- [ ] Tapping the hamburger drops down a drawer listing every nav option, right-aligned [MANUAL]
+- [ ] The drawer can be reopened after closing, and closes via the X, tap outside, and link navigation [MANUAL]
+- [ ] From inside a feed on a phone, every nav destination is reachable [MANUAL]
+- [ ] On a touch viewport, the watched toggle and ⋯ menu are visible on cards, and the menu can mark watched, unwatched, and hide [MANUAL]
+- [ ] Feed and group feed heroes stack compactly with filters on their own row on a phone [MANUAL]
+- [ ] No audited page (signed-in and auth) scrolls horizontally at phone width [MANUAL]
 - [ ] Desktop (768px and up) sidebar and layout are unchanged [MANUAL]
 - [ ] Drawer animation feels smooth and the right-aligned text sits within easy thumb reach [MANUAL]
+
+---
+
+## [040] Icon-only feed hero buttons that never overlap the title
+
+**Status:** `next`
+**Depends On:** none
+**Spec:** none
+
+### Goal
+
+Feed hero toggle buttons never overlap the hero title, on any feed and any title length. The buttons drop their text labels and show icons only, with the explanation moved into a tooltip.
+
+### Scope
+
+- All Videos, group feed, and Shorts heroes
+- Remove the text label from every hero button (cap, starred, watched, Manage channels, Shorts toggles). Icon only, square tap target
+- Each button gets a `Tooltip` that states the current state and what a click does. Keep `aria-label` and `aria-pressed`
+- Title block truncates with an ellipsis when it still runs out of room. Buttons never shrink or overlap
+- NOT in scope: mobile hero restacking (owned by [039]), the stats card (owned by [042])
+
+### Technical Notes
+
+**User flows:**
+
+- **User:** Hero buttons on `/feed`, `/groups/{group}`, `/shorts`. Hover a button to read its tooltip, click to toggle.
+
+**Critical files:**
+
+- `resources/js/pages/Groups/Show.vue` - modify. Hero at lines ~427-547. Overlap source: the title `div` is `min-w-0 flex-1` but the `h1` has no `truncate`, so long names render under the buttons.
+- `resources/js/pages/Videos/Feed.vue` - modify. Hero buttons at lines ~400-468.
+- `resources/js/pages/Videos/Shorts.vue` - modify. Hero buttons at lines ~344-390.
+- `resources/js/components/ui/tooltip/` - pattern to follow. Existing shadcn tooltip, already used by `NavMain.vue` and `NavGroupFeeds.vue`.
+
+**Details:**
+
+- The three heroes duplicate the same button markup. Extract one `HeroToggleButton.vue` (icon, pressed state, tooltip text, optional `href`) so the three pages stay in sync
+- Button container gets `shrink-0`. Add `truncate` to the `h1`
+- Drop the native `title` attributes once the tooltip replaces them
+
+### Acceptance Criteria
+
+- [ ] Hero buttons on all three feeds render icons only, with no text label [MANUAL]
+- [ ] Hovering each hero button shows a tooltip describing its state [MANUAL]
+- [ ] A group with a 60-character name does not overlap the buttons at 1280px width. The title truncates [MANUAL]
+- [ ] Hero buttons keep their toggle behavior and `aria-pressed` state [MANUAL]
+
+---
+
+## [041] Pointer cursor on every link and button, site-wide
+
+**Status:** `next`
+**Depends On:** none
+**Spec:** none
+
+### Goal
+
+Every clickable element on the site shows the pointer (finger) cursor. A project rule in `CLAUDE.md` keeps new code consistent.
+
+### Scope
+
+- One global base-layer CSS rule in `resources/css/app.css` covering `a[href]`, `button`, `[role="button"]`, `[role="menuitem"]`, `[role="tab"]`, `[role="option"]`, `[role="checkbox"]`, `[role="switch"]`, `summary`, `label[for]`, `select`, and `input` of type `checkbox`, `radio`, `submit`, `button`, `reset`, `file`
+- Disabled elements (`:disabled`, `[aria-disabled="true"]`, `[data-disabled]`) use `cursor: not-allowed`
+- Clickable non-semantic elements (for example video cards) become `<button>`/`<a>` or carry `role="button"` so the rule catches them
+- Add a rule to `CLAUDE.md`: every link and button uses the pointer cursor via the global rule, and custom clickable elements must be a `<button>`, an `<a>`, or carry `role="button"`
+- NOT in scope: an `AGENTS.md` file (none exists in the repo)
+
+### Technical Notes
+
+**User flows:**
+
+- **User:** Any page. Hovering any link, button, menu item, toggle, or card shows the pointer cursor.
+
+**Critical files:**
+
+- `resources/css/app.css` - modify. Tailwind 4 preflight sets `button { cursor: default }`, which is the root cause. Add the rule in `@layer base` so utility classes still override it.
+- `CLAUDE.md` - modify. Add the cursor rule under a short "UI rules" section.
+- `resources/js/components/VideoCard.vue` - check. Confirm the card click target is a link or button.
+- `resources/js/components/ui/` - check. shadcn primitives (dropdown items, select, checkbox, sidebar buttons) use `role` attributes the rule must cover.
+
+**Details:**
+
+- Remove redundant `cursor-pointer` utilities only where they add noise. Do not churn every file
+- Audit with `playwright-cli`: hover a sample of each control type on `/feed`, `/groups/{group}`, `/shorts`, `/subscriptions`, settings, and auth pages
+
+### Acceptance Criteria
+
+- [ ] Buttons, links, dropdown menu items, checkboxes, and sidebar items compute `cursor: pointer` [MANUAL]
+- [ ] Disabled buttons compute `cursor: not-allowed` [MANUAL]
+- [ ] `CLAUDE.md` states the pointer cursor rule
+- [ ] Hover audit across all pages finds no clickable element without the pointer [MANUAL]
+
+---
+
+## [042] Feed stats card: Most Watched + Channel count, actually populated
+
+**Status:** `next`
+**Depends On:** none
+**Spec:** none
+
+### Goal
+
+Every feed shows a stats card under the hero with real data. The left 2/3 cell shows the most watched channel by three measures. The right 1/3 cell shows the feed's channel count. The placeholder dashes are gone.
+
+### Scope
+
+- Replace the group feed's Channels / Starred / Last sync card with a 2-cell card
+- Add the same card to All Videos and Shorts, scoped to each feed's channels
+- **Most watched (2/3 width):** three sub-columns, each with an icon, a short label, the channel avatar and name, and its number:
+
+  | Sub-column | Measure | Number shown |
+  | --- | --- | --- |
+  | All time | Most videos marked watched | watched count |
+  | 30 days | Most watched in the last 30 days | watched count |
+  | Ratio | Highest watched / ingested videos, min 5 watched | percent |
+
+- **Channels (1/3 width):** icon + count of channels in the feed, with the starred count as secondary text
+- Empty states: a sub-column with no qualifying channel shows "No watches yet"
+- Ties break on the most recent watch
+- NOT in scope: clickable stats, charts, a last-sync value
+
+### Technical Notes
+
+**User flows:**
+
+- **User:** Stats card on `/feed`, `/groups/{group}`, `/shorts`. Read which channel they watch most and how many channels the feed holds.
+
+**Critical files:**
+
+- `app/Http/Controllers/GroupFeedController.php` - modify. Add a `stats` prop beside `videos` (line ~27).
+- `app/Http/Controllers/AllVideosFeedController.php` - modify. Same, using `$subscribedChannelIds`.
+- `app/Http/Controllers/ShortsFeedController.php` - modify. Same, Shorts-only videos.
+- `app/Models/UserVideoState.php` - entry point. `state = 'watched'` rows keyed by `youtube_video_id`. Use `updated_at` as the watch time for the 30-day window.
+- `resources/js/pages/Groups/Show.vue` - modify. Placeholder card at lines ~549-590.
+- `resources/js/pages/Videos/Feed.vue`, `resources/js/pages/Videos/Shorts.vue` - modify. Add the card under the hero.
+
+**Details:**
+
+- Put the three queries in one service (for example `App\Services\FeedStats`) taking a user and a channel-id set, returning `{ channel_count, starred_count, most_watched: { all_time, last_30_days, ratio } }`
+- Join `user_video_states` to `videos` on `youtube_video_id`, group by `channel_id`. One query per measure, no N+1
+- Serve `stats` as `Inertia::defer` in its own group so it does not block the video payload
+- Extract the card into `FeedStatsCard.vue` shared by the three pages. Heroicons: `EyeIcon` for all time, `CalendarDaysIcon` for 30 days, `ChartPieIcon` for ratio, `RectangleStackIcon` for channels
+- Channel names truncate inside their sub-column
+
+### Acceptance Criteria
+
+- [ ] Group, All Videos, and Shorts feeds return a `stats` prop with channel count, starred count, and the three most-watched results
+      `tests/Feature/FeedStatsTest.php::it returns stats on each feed`
+- [ ] All time picks the channel with the most watched videos in the feed, ties broken by latest watch
+      `tests/Feature/FeedStatsTest.php::it picks the all time most watched channel`
+- [ ] 30 days ignores watches older than 30 days
+      `tests/Feature/FeedStatsTest.php::it limits the 30 day measure`
+- [ ] Ratio skips channels under 5 watched videos
+      `tests/Feature/FeedStatsTest.php::it requires a minimum for ratio`
+- [ ] Stats count only channels in the current feed and the current user's watches
+      `tests/Feature/FeedStatsTest.php::it scopes stats to the feed and user`
+- [ ] The card renders 2/3 most watched and 1/3 channels with icons, and no dash placeholders [MANUAL]
+
+---
+
+## [043] Unsubscribe-select mode on feeds
+
+**Status:** `next`
+**Depends On:** [040]
+**Spec:** none
+
+### Goal
+
+On any feed, the user turns on an unsubscribe mode, clicks videos to select their channels, then removes them all at once. A confirm modal lists the channels and the feeds each one leaves, and lets the user drop channels from the batch or narrow each one to the current group before confirming.
+
+### Scope
+
+- New icon-only hero toggle (per [040]) on All Videos, group feeds, and Shorts: "Unsubscribe mode"
+- In the mode, clicking a video toggles selection of its **channel**, not the video. Every card from a selected channel shows a selected state (Cherry ring + check badge). Clicking does not open the video. Card hover actions and the context menu are off
+- A sticky action bar shows the selected channel count, "Clear", and "Remove subscriptions"
+- "Remove subscriptions" opens a confirm modal:
+  - One row per selected channel: avatar, name, and the groups it belongs to
+  - Per-row remove (X) to drop the channel from the batch
+  - Per-row scope control on group feeds: "Everywhere" (default) or "This group only". On All Videos and Shorts, scope is always everywhere and the control is hidden
+  - Summary of affected feeds (each group that loses at least one channel)
+  - Confirm is disabled when the list is empty
+- On confirm, one request applies the batch, removed channels' videos leave the feed, cache entries for affected feeds are cleared, and the mode exits
+- Leaving the page or turning the mode off clears the selection
+- NOT in scope: undo, the Subscriptions page
+
+### Technical Notes
+
+**User flows:**
+
+- **User:** Hero toggle on `/feed`, `/groups/{group}`, `/shorts`. Turn on unsubscribe mode, click videos to select or deselect channels, click "Remove subscriptions".
+- **User:** Confirm modal. Remove rows, set each to everywhere or this group, confirm or cancel.
+
+**Critical files:**
+
+- `app/Http/Controllers/SubscriptionController.php` - modify. `destroy` (line 215) detaches one channel from all user groups. Add a bulk action next to it.
+- `routes/web.php` - modify. Add bulk `DELETE subscriptions` named `subscriptions.destroy-many`.
+- `resources/js/pages/Groups/Show.vue`, `resources/js/pages/Videos/Feed.vue`, `resources/js/pages/Videos/Shorts.vue` - modify. Mode state, card click interception, action bar, modal.
+- `resources/js/components/VideoCard.vue` - modify. Add `selectable` and `selected` props. Selected styling, suppress open on click.
+- `resources/js/components/ui/dialog/` - pattern to follow for the confirm modal.
+
+**Details:**
+
+- Bulk request body: `items: [{ channel_id, scope: 'everywhere' | 'group', group_id? }]`. Validate in a Form Request: every channel sits in one of the user's groups, `group_id` belongs to the user and is required when `scope = group`. Wrap in a transaction
+- Share the detach logic between `destroy` and the bulk action so the two paths do not drift
+- The modal needs each selected channel's group names. Ship a per-page `channelGroups` map (`channel_id => [{id, name}]`) once rather than adding groups to every video in the payload
+- After success, invalidate the client feed cache (cache-first render from `3f05b59`) for every affected feed
+- Extract the mode and modal into a `useUnsubscribeMode` composable and `UnsubscribeConfirmDialog.vue` shared by the three pages
+
+### Acceptance Criteria
+
+- [ ] Bulk endpoint removes each channel everywhere or from one group per its scope
+      `tests/Feature/BulkUnsubscribeTest.php::it removes channels by scope`
+- [ ] Bulk endpoint rejects channels or groups the user does not own
+      `tests/Feature/BulkUnsubscribeTest.php::it rejects foreign channels and groups`
+- [ ] Single `DELETE subscriptions/{channel}` behavior is unchanged
+      `tests/Feature/BulkUnsubscribeTest.php::it keeps single destroy behavior`
+- [ ] In the mode, clicking a video selects its channel and marks every card from that channel. Clicking again deselects [MANUAL]
+- [ ] In the mode, clicking a video does not open it [MANUAL]
+- [ ] The modal lists channels with their groups, allows removing rows, and disables confirm when empty [MANUAL]
+- [ ] On a group feed, a row set to "This group only" leaves the channel in its other groups [MANUAL]
+- [ ] After confirm, removed channels' videos leave the feed and the mode exits [MANUAL]
 
 ---
