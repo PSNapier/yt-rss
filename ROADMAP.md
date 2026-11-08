@@ -2,32 +2,6 @@
 
 <!-- Next task number: [044] -->
 
-## [015] Swap TikTok hero icon for a film camera icon
-
-**Status:** `next`
-**Depends On:** none
-
-### Goal
-
-The All Videos feed hero shows a film/video camera icon instead of the TikTok note glyph.
-
-### Scope
-
-- Replace the inline TikTok SVG in the All Videos hero with a Heroicons film/camera icon
-
-### Technical Notes
-
-- The TikTok path is a hand-rolled inline `<svg>` in `Feed.vue:302-312`
-- `FilmIcon` and `VideoCameraIcon` are already imported/registered via `lib/groupIcons.ts`; use one from `@heroicons/vue/24/solid` or `/outline` to match the white-on-Cherry hero chip
-- Keep the surrounding white rounded chip container and Cherry color
-
-### Acceptance Criteria
-
-- [ ] The All Videos hero shows a film/camera icon, no TikTok glyph
-- [ ] Icon sizing/color matches the existing hero chip treatment
-
----
-
 ## [016] Edit group icon from group management
 
 **Status:** `next`
