@@ -1,5 +1,41 @@
 # Roadmap Done
 
+## [010] Guarantee first 15 videos without Load more
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+Each feed shows at least 15 videos on first load regardless of how they fall across Today / Yesterday / Earlier this week / Older, without the user clicking Load more.
+
+### Scope
+
+- After mount, auto-load pages until at least 15 cards are visible (or the cursor is exhausted)
+- Confirm the time-bucketing keeps showing them even when the recent buckets are empty
+
+### Technical Notes
+
+- Buckets are computed client-side in `Feed.vue:248-279` from whatever `items` were loaded; empty buckets are filtered out, so an "Older" bucket already renders — the real constraint is how many videos are loaded
+- **Approach: client-side auto-load loop.** Keep the existing page size but call `loadMore()` (`Feed.vue:184-218`) repeatedly after mount until the count of *visible* cards (after the `showWatched`/starred filters) is ≥15 or `nextUrl` is null. Guard against infinite loops when the cursor is exhausted
+- This handles per-channel cap thinning (`[004]/[005]`): with the cap on, a page can yield few visible cards, so the loop keeps pulling
+- **Depends on `[006]`**: the loop must render against the cache-aware/hydrated view so it does not re-trigger the loading skeleton or thrash requests. Sequence `[006]` first
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** "All Videos" at `/feed` or a group at `/groups/{group}`. At least 15 cards show on first load with no "Load more" click, including when every video is older than a week.
+
+### Acceptance Criteria
+
+- [x] A fresh feed with ≥15 available videos shows ≥15 cards without clicking Load more
+- [x] Videos from Older buckets appear when Today/Yesterday/Week are sparse
+- [x] Holds with the per-channel cap both on and off
+- [x] With fewer than 15 total available, the loop stops at the cursor end without spinning
+
+---
+
 ## [006] Stop feed reverting to skeleton + scroll reset on tab return
 
 **Status:** `done`
