@@ -2,37 +2,6 @@
 
 <!-- Next task number: [040] -->
 
-## [008] Persist show/hide-watched state across feeds
-
-**Status:** `done`
-**Depends On:** none
-
-### Goal
-
-The show-watched / hide-watched toggle keeps its setting when moving between groups and the all-videos feed, instead of resetting per page.
-
-### Scope
-
-- Persist `showWatched` globally on the user (across all group feeds and the all-videos feed)
-- Deliver it as a prop and restore it on mount
-
-### Technical Notes
-
-- `showWatched` is component-local `ref(true)` in `Feed.vue:43` and `Show.vue`, so it resets on every navigation
-- **Persist server-side**, mirroring the existing `capEnabled` pattern: a column on the user, a POST route like `FeedCapController` (`feed.cap()` in `Feed.vue:155-166`), and the value delivered as a shared prop to the feed pages. Do **not** use `localStorage` — this matches the cap toggle and syncs across devices
-- Toggling posts the new value (`preserveScroll`, `preserveState`) and updates local state optimistically; both `Feed.vue` and `Show.vue` read the same prop
-- Built: users columns `feed_show_watched` / `feed_starred_only`, `POST feed/preferences` (`FeedPreferencesController`, 204, plain fetch via `useFeedPreferences.ts` so the deferred feed does not flash the skeleton), props `showWatched` / `starredOnly` from both feed controllers
-- Pairs with `[019]` (starred-only), which uses the identical mechanism — build them together
-
-### Acceptance Criteria
-
-- [x] Toggling hide-watched, navigating to another feed, and returning keeps hide-watched active
-- [x] The setting survives a full page reload and appears on a second device/browser after login
-- [x] The same persisted value applies to every group feed and the all-videos feed
-- [x] Tests: `tests/Feature/FeedPreferencesTest.php`
-
----
-
 ## [009] Unify sidebar button highlighting (Cherry accent border)
 
 **Status:** `next`
