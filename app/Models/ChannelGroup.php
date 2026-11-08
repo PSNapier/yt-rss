@@ -11,11 +11,22 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
-#[Fillable(['user_id', 'name', 'icon', 'hidden'])]
+#[Fillable(['user_id', 'name', 'icon', 'color', 'hidden'])]
 class ChannelGroup extends Model
 {
     /** @use HasFactory<ChannelGroupFactory> */
     use HasFactory;
+
+    /**
+     * Preset color keys. Mirrored by resources/js/lib/groupColors.ts, which owns
+     * the actual gradient and icon colors.
+     *
+     * @var list<string>
+     */
+    public const COLORS = [
+        'ocean', 'teal', 'forest', 'amber', 'orange',
+        'rose', 'fuchsia', 'violet', 'indigo', 'slate',
+    ];
 
     /**
      * @return array<string, string>

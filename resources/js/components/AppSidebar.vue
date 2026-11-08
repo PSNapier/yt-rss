@@ -1,11 +1,5 @@
 <script setup lang="ts">
-import {
-    BoltIcon,
-    QueueListIcon,
-    VideoCameraIcon,
-} from '@heroicons/vue/24/outline';
-import { Link, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { Link } from '@inertiajs/vue3';
 import AppLogo from '@/components/AppLogo.vue';
 import NavGroupFeeds from '@/components/NavGroupFeeds.vue';
 import NavMain from '@/components/NavMain.vue';
@@ -16,40 +10,19 @@ import {
     SidebarFooter,
     SidebarHeader,
     SidebarTrigger,
+    useSidebar,
 } from '@/components/ui/sidebar';
+import { useMainNavItems } from '@/composables/useMainNavItems';
 import { landing } from '@/routes';
-import feed from '@/routes/feed';
-import shorts from '@/routes/shorts';
-import subscriptions from '@/routes/subscriptions';
-import type { NavItem } from '@/types';
 
-const page = usePage();
+const mainNavItems = useMainNavItems();
 
-const mainNavItems = computed<NavItem[]>(() => [
-    {
-        title: 'All Videos',
-        href: feed.index(),
-        icon: VideoCameraIcon,
-    },
-    ...(page.props.shortsHidden
-        ? []
-        : [
-              {
-                  title: 'Shorts',
-                  href: shorts.index(),
-                  icon: BoltIcon,
-              },
-          ]),
-    {
-        title: 'Subscriptions',
-        href: subscriptions.index(),
-        icon: QueueListIcon,
-    },
-]);
+// Below 768px the nav lives in MobileTopBar's drop-down drawer instead.
+const { isMobile } = useSidebar();
 </script>
 
 <template>
-    <Sidebar collapsible="icon">
+    <Sidebar v-if="!isMobile" collapsible="icon">
         <SidebarHeader>
             <div
                 class="flex items-center justify-between gap-2 group-data-[collapsible=icon]:justify-center"

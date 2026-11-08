@@ -1,8 +1,17 @@
 <script setup lang="ts">
-import { EyeIcon, EyeSlashIcon, StarIcon } from '@heroicons/vue/24/outline';
+import {
+    EyeIcon,
+    EyeSlashIcon,
+    PaintBrushIcon,
+    Squares2X2Icon,
+    StarIcon,
+    StopIcon,
+    TrashIcon,
+} from '@heroicons/vue/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref, useTemplateRef } from 'vue';
+import GroupAppearanceDialog from '@/components/GroupAppearanceDialog.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,6 +32,8 @@ import subscriptions from '@/routes/subscriptions';
 interface Group {
     id: number;
     name: string;
+    icon: string | null;
+    color: string | null;
     channels_count: number;
     hidden: boolean;
 }
@@ -93,6 +104,8 @@ const submitRename = (group: Group) => {
     });
 };
 
+const appearanceGroup = ref<Group | null>(null);
+
 const confirmDeleteGroup = ref<Group | null>(null);
 
 const confirmDelete = () => {
@@ -151,8 +164,27 @@ const toggleShortsHidden = () => {
 const addGroupIds = ref<number[]>([]);
 const addGroupError = ref<string | null>(null);
 
+const multiSelect = ref(true);
+
+const toggleMultiSelect = () => {
+    multiSelect.value = !multiSelect.value;
+
+    if (!multiSelect.value && addGroupIds.value.length > 1) {
+        addGroupIds.value = [addGroupIds.value[0]];
+    }
+};
+
 const toggleAddGroup = (groupId: number) => {
     addGroupError.value = null;
+
+    if (!multiSelect.value) {
+        addGroupIds.value = addGroupIds.value.includes(groupId)
+            ? []
+            : [groupId];
+
+        return;
+    }
+
     const idx = addGroupIds.value.indexOf(groupId);
 
     if (idx === -1) {
@@ -545,7 +577,10 @@ const onImportFile = (e: Event) => {
                             >Cancel</Button
                         >
                     </form>
-                    <div v-else class="flex items-center gap-2">
+                    <div
+                        v-else
+                        class="flex flex-wrap items-center gap-x-2 gap-y-1 md:flex-nowrap"
+                    >
                         <Button
                             type="button"
                             variant="ghost"
@@ -565,7 +600,7 @@ const onImportFile = (e: Event) => {
                             <EyeIcon v-else class="size-5" />
                         </Button>
                         <div
-                            class="min-w-0 flex-1 truncate"
+                            class="min-w-0 flex-1 truncate max-md:basis-[calc(100%-2.5rem)]"
                             :class="{ 'opacity-50': group.hidden }"
                         >
                             <span v-if="group.hidden" class="font-medium">{{
@@ -588,9 +623,21 @@ const onImportFile = (e: Event) => {
                             type="button"
                             variant="ghost"
                             size="sm"
+                            class="max-md:ml-auto"
                             @click="startRename(group)"
                             >Rename</Button
                         >
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            class="text-muted-foreground"
+                            :aria-label="`Edit icon and color for ${group.name}`"
+                            title="Icon and color"
+                            @click="appearanceGroup = group"
+                        >
+                            <PaintBrushIcon class="size-5" />
+                        </Button>
                         <Button
                             type="button"
                             variant="ghost"
@@ -647,7 +694,31 @@ const onImportFile = (e: Event) => {
             <div class="flex max-w-2xl flex-col gap-4 rounded-xl border p-4">
                 <!-- Group pill-select for add form -->
                 <div class="flex flex-col gap-2">
-                    <Label>Add to groups</Label>
+                    <div class="flex items-center gap-1">
+                        <Label>Add to groups</Label>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            class="text-muted-foreground"
+                            data-testid="group-select-mode-toggle"
+                            :aria-pressed="multiSelect"
+                            :aria-label="
+                                multiSelect
+                                    ? 'Multi-select groups (switch to single)'
+                                    : 'Single-select group (switch to multi)'
+                            "
+                            :title="
+                                multiSelect
+                                    ? 'Multi-select: click to switch to single'
+                                    : 'Single-select: click to switch to multi'
+                            "
+                            @click="toggleMultiSelect"
+                        >
+                            <Squares2X2Icon v-if="multiSelect" class="size-5" />
+                            <StopIcon v-else class="size-5" />
+                        </Button>
+                    </div>
                     <div class="flex flex-wrap gap-2">
                         <button
                             v-for="group in groups"
@@ -932,11 +1003,13 @@ const onImportFile = (e: Event) => {
                         </div>
                         <Button
                             variant="ghost"
-                            size="sm"
+                            size="icon"
                             class="shrink-0 self-start text-destructive sm:mt-0.5"
+                            aria-label="Remove subscription"
+                            title="Remove subscription"
                             @click="startRemove(channel)"
                         >
-                            Remove
+                            <TrashIcon class="size-5" />
                         </Button>
                     </li>
                 </ul>
@@ -1094,11 +1167,13 @@ const onImportFile = (e: Event) => {
                                 </div>
                                 <Button
                                     variant="ghost"
-                                    size="sm"
+                                    size="icon"
                                     class="shrink-0 self-start text-destructive sm:mt-0.5"
+                                    aria-label="Remove subscription"
+                                    title="Remove subscription"
                                     @click="startRemove(channel)"
                                 >
-                                    Remove
+                                    <TrashIcon class="size-5" />
                                 </Button>
                             </li>
                         </ul>
@@ -1113,6 +1188,11 @@ const onImportFile = (e: Event) => {
             </div>
         </template>
     </div>
+
+    <GroupAppearanceDialog
+        :group="appearanceGroup"
+        @close="appearanceGroup = null"
+    />
 
     <!-- Confirm delete group dialog -->
     <Dialog

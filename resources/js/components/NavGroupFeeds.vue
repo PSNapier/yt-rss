@@ -4,7 +4,9 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
+import { resolveGroupColor } from '@/lib/groupColors';
 import { resolveGroupIcon } from '@/lib/groupIcons';
+import { sidebarNavButtonClass } from '@/lib/sidebarNav';
 import groups from '@/routes/groups';
 import subscriptions from '@/routes/subscriptions';
 
@@ -38,21 +40,17 @@ const { isCurrentUrl } = useCurrentUrl();
                     as-child
                     :is-active="isCurrentUrl(groups.show(group.id))"
                     :tooltip="group.name"
-                    :class="
-                        isCurrentUrl(groups.show(group.id))
-                            ? 'bg-cherry font-semibold text-white hover:bg-cherry hover:text-white data-[active=true]:bg-cherry data-[active=true]:text-white'
-                            : 'text-foreground'
-                    "
+                    :class="sidebarNavButtonClass(isCurrentUrl(groups.show(group.id)))"
                 >
                     <Link :href="groups.show(group.id).url">
-                        <component :is="resolveGroupIcon(group.icon, group.name)" />
+                        <component
+                            :is="resolveGroupIcon(group.icon, group.name)"
+                            :style="{ color: resolveGroupColor(group.color)?.icon }"
+                        />
                         <span class="flex-1 truncate">{{ group.name }}</span>
                         <span
                             v-if="group.channels_count !== undefined && group.channels_count > 0"
-                            :class="[
-                                'rounded-full px-1.5 py-0.5 text-[11px] leading-none group-data-[collapsible=icon]:hidden',
-                                isCurrentUrl(groups.show(group.id)) ? 'text-white/85' : 'text-sidebar-foreground/45',
-                            ]"
+                            class="rounded-full px-1.5 py-0.5 text-[11px] leading-none text-sidebar-foreground/45 group-data-[collapsible=icon]:hidden"
                         >
                             {{ group.channels_count }}
                         </span>

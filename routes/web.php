@@ -5,6 +5,7 @@ use App\Http\Controllers\AllVideosFeedController;
 use App\Http\Controllers\ChannelController;
 use App\Http\Controllers\ChannelGroupController;
 use App\Http\Controllers\FeedCapController;
+use App\Http\Controllers\FeedPreferencesController;
 use App\Http\Controllers\GroupFeedController;
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\ShortsCategoryFilterController;
@@ -12,16 +13,12 @@ use App\Http\Controllers\ShortsFeedController;
 use App\Http\Controllers\ShortsVisibilityController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\VideoStateController;
-use App\Http\Controllers\WebSubController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Features;
 
 Route::inertia('/', 'Welcome', [
     'canRegister' => Features::enabled(Features::registration()),
 ])->name('home');
-
-Route::get('websub/{token}', [WebSubController::class, 'verify'])->name('websub.verify');
-Route::post('websub/{token}', [WebSubController::class, 'receive'])->name('websub.receive');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('home', LandingController::class)->name('landing');
@@ -39,6 +36,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('feed', [AllVideosFeedController::class, 'index'])->name('feed.index');
     Route::post('feed/cap', [FeedCapController::class, 'update'])->name('feed.cap');
+    Route::post('feed/preferences', [FeedPreferencesController::class, 'update'])->name('feed.preferences');
 
     Route::get('shorts', [ShortsFeedController::class, 'index'])->name('shorts.index');
     Route::post('shorts/categories', [ShortsCategoryFilterController::class, 'update'])->name('shorts.categories');
@@ -49,6 +47,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('subscriptions/{channel}/groups', [SubscriptionController::class, 'updateGroups'])->name('subscriptions.update-groups');
     Route::patch('subscriptions/{channel}/favorite', [SubscriptionController::class, 'toggleFavorite'])->name('subscriptions.toggle-favorite');
     Route::patch('subscriptions/{channel}/cap', [SubscriptionController::class, 'updateCap'])->name('subscriptions.update-cap');
+    Route::delete('subscriptions', [SubscriptionController::class, 'destroyMany'])->name('subscriptions.destroy-many');
     Route::delete('subscriptions/{channel}', [SubscriptionController::class, 'destroy'])->name('subscriptions.destroy');
 
     Route::post('videos/{youtubeVideoId}/state', [VideoStateController::class, 'store'])->name('videos.state.store');

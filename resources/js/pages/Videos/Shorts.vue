@@ -4,12 +4,20 @@ import {
     EyeIcon,
     EyeSlashIcon,
     FunnelIcon,
+    UserMinusIcon,
 } from '@heroicons/vue/24/outline';
 import { Deferred, Head, router, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import FeedGridSkeleton from '@/components/FeedGridSkeleton.vue';
+import FeedStatsCard from '@/components/FeedStatsCard.vue';
+import type { FeedStats } from '@/components/FeedStatsCard.vue';
+import HeroToggleButton from '@/components/HeroToggleButton.vue';
 import ShortVideoCard from '@/components/ShortVideoCard.vue';
+import UnsubscribeActionBar from '@/components/UnsubscribeActionBar.vue';
+import UnsubscribeConfirmDialog from '@/components/UnsubscribeConfirmDialog.vue';
 import { getFeedCache, saveFeedCache } from '@/composables/useFeedCache';
+import { useUnsubscribeMode } from '@/composables/useUnsubscribeMode';
+import type { ChannelGroupMap } from '@/composables/useUnsubscribeMode';
 import { postVideoState } from '@/composables/useVideoState';
 import { resolveGroupIcon } from '@/lib/groupIcons';
 import feed from '@/routes/feed';
@@ -49,8 +57,10 @@ interface CursorPaginator<T> {
 
 const props = defineProps<{
     videos?: CursorPaginator<Video>;
+    stats?: FeedStats;
     categories?: Category[];
     capEnabled?: boolean;
+    channelGroupMap?: ChannelGroupMap;
 }>();
 
 const items = reactive<Video[]>([]);
@@ -200,6 +210,30 @@ const onToggleWatched = (video: Video) => {
     );
 };
 
+// Unsubscribe-select mode: a card click selects its channel for removal.
+const {
+    active: unsubActive,
+    count: unsubCount,
+    selectedChannels: unsubChannels,
+    dialogOpen: unsubDialogOpen,
+    processing: unsubProcessing,
+    toggleMode: toggleUnsubMode,
+    exit: exitUnsubMode,
+    clear: clearUnsub,
+    isSelected: isChannelSelected,
+    toggleChannel: toggleUnsubChannel,
+    deselect: deselectUnsubChannel,
+    openDialog: openUnsubDialog,
+    confirm: confirmUnsub,
+} = useUnsubscribeMode({
+    channelGroups: () => props.channelGroupMap,
+    onRemoved: (channelIds) => {
+        const gone = new Set(channelIds);
+        const kept = items.filter((v) => !gone.has(v.channel.id));
+        items.splice(0, items.length, ...kept);
+    },
+});
+
 const onCardClick = (video: Video) => {
     if (video.user_state !== 'watched') {
         setState(video.youtube_video_id, 'watched');
@@ -309,80 +343,72 @@ const buckets = computed(() => {
 
     <div class="flex h-full flex-1 flex-col">
         <div class="flex flex-1 flex-col gap-4 p-4 md:p-6">
-            <!-- Hero banner -->
-            <div
-                class="flex items-end gap-[22px] rounded-xl p-[26px_28px] text-white"
-                style="
-                    background: linear-gradient(
-                        180deg,
-                        var(--cherry) 0%,
-                        var(--cherry-deep) 100%
-                    );
-                "
-            >
+            <div class="flex flex-col">
+                <!-- Hero banner -->
                 <div
-                    class="flex size-[92px] shrink-0 items-center justify-center rounded-xl bg-white"
-                    style="color: var(--cherry)"
+                    class="flex flex-wrap items-end gap-x-3.5 gap-y-4 rounded-t-xl rounded-b-none p-[18px] text-white md:flex-nowrap md:gap-[22px] md:p-[26px_28px]"
+                    style="
+                        background: linear-gradient(
+                            180deg,
+                            var(--cherry) 0%,
+                            var(--cherry-deep) 100%
+                        );
+                    "
                 >
-                    <BoltIcon class="size-11" />
-                </div>
+                    <div
+                        class="flex size-14 shrink-0 items-center justify-center rounded-xl bg-white md:size-[92px]"
+                        style="color: var(--cherry)"
+                    >
+                        <BoltIcon class="size-8 md:size-11" />
+                    </div>
 
-                <div class="min-w-0 flex-1">
-                    <p
-                        class="mb-[7px] text-[12px] font-bold tracking-[0.16em] text-white/70 uppercase"
-                    >
-                        Feed
-                    </p>
-                    <h1
-                        class="text-[40px] leading-none font-bold tracking-[-0.03em] text-white"
-                    >
-                        Shorts
-                    </h1>
-                </div>
+                    <div class="min-w-0 flex-1">
+                        <p
+                            class="mb-1 text-[11px] font-bold tracking-[0.16em] text-white/70 uppercase md:mb-[7px] md:text-[12px]"
+                        >
+                            Feed
+                        </p>
+                        <h1
+                            class="truncate text-[26px] leading-[1.15] font-bold tracking-[-0.03em] text-white md:text-[40px]"
+                        >
+                            Shorts
+                        </h1>
+                    </div>
 
-                <div class="flex items-center gap-[10px]">
-                    <button
-                        type="button"
-                        :class="[
-                            'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
-                            capOn
-                                ? 'bg-white'
-                                : 'bg-white/10 text-white/90 hover:text-white',
-                        ]"
-                        :style="capOn ? 'color: var(--cherry)' : ''"
-                        :aria-pressed="capOn"
-                        :title="
-                            capOn
-                                ? 'Showing latest unwatched Short per channel'
-                                : 'Showing all Shorts'
-                        "
-                        @click="toggleCap"
-                    >
-                        <FunnelIcon class="size-[15px]" />
-                        <span>{{ capOn ? 'Latest only' : 'All Shorts' }}</span>
-                    </button>
-
-                    <button
-                        type="button"
-                        :class="[
-                            'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
-                            showWatched
-                                ? 'bg-white'
-                                : 'bg-white/10 text-white/90 hover:text-white',
-                        ]"
-                        :style="showWatched ? 'color: var(--cherry)' : ''"
-                        :aria-pressed="showWatched"
-                        @click="showWatched = !showWatched"
-                    >
-                        <component
-                            :is="showWatched ? EyeIcon : EyeSlashIcon"
-                            class="size-[15px]"
+                    <div class="flex w-full shrink-0 items-center gap-[10px] md:w-auto">
+                        <HeroToggleButton
+                            :icon="UserMinusIcon"
+                            :pressed="unsubActive"
+                            :tooltip="
+                                unsubActive
+                                    ? 'Unsubscribe mode on. Click to turn it off'
+                                    : 'Unsubscribe mode. Click Shorts to select channels to remove'
+                            "
+                            @click="toggleUnsubMode"
                         />
-                        <span>{{
-                            showWatched ? 'Showing watched' : 'Hiding watched'
-                        }}</span>
-                    </button>
+                        <HeroToggleButton
+                            :icon="FunnelIcon"
+                            :pressed="capOn"
+                            :tooltip="
+                                capOn
+                                    ? 'Showing latest unwatched Short per channel. Click to show all Shorts'
+                                    : 'Showing all Shorts. Click to show only the latest unwatched per channel'
+                            "
+                            @click="toggleCap"
+                        />
+                        <HeroToggleButton
+                            :icon="showWatched ? EyeIcon : EyeSlashIcon"
+                            :pressed="showWatched"
+                            :tooltip="
+                                showWatched
+                                    ? 'Watched Shorts visible (greyed). Click to hide them'
+                                    : 'Watched Shorts hidden. Click to show them'
+                            "
+                            @click="showWatched = !showWatched"
+                        />
+                    </div>
                 </div>
+                <FeedStatsCard :stats="props.stats" />
             </div>
 
             <!-- Category chips: click to hide or show a category -->
@@ -468,6 +494,11 @@ const buckets = computed(() => {
                                 v-for="video in bucket.items"
                                 :key="video.youtube_video_id"
                                 :video="video"
+                                :selectable="unsubActive"
+                                :selected="isChannelSelected(video.channel.id)"
+                                @select="
+                                    (v: Video) => toggleUnsubChannel(v.channel)
+                                "
                                 @card-click="onCardClick"
                                 @toggle-watched="onToggleWatched"
                             />
@@ -478,6 +509,22 @@ const buckets = computed(() => {
 
             <div ref="sentinel" class="h-10" />
             <FeedGridSkeleton v-if="loadingMore" :count="4" class="mt-4" />
+            <UnsubscribeActionBar
+                v-if="unsubActive"
+                :count="unsubCount"
+                @clear="clearUnsub"
+                @remove="openUnsubDialog"
+                @exit="exitUnsubMode"
+            />
+
+            <UnsubscribeConfirmDialog
+                v-model:open="unsubDialogOpen"
+                :channels="unsubChannels"
+                :channel-groups="props.channelGroupMap"
+                :processing="unsubProcessing"
+                @deselect="deselectUnsubChannel"
+                @confirm="confirmUnsub"
+            />
         </div>
     </div>
 </template>

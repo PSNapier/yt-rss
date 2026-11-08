@@ -3,13 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\Video;
+use App\Services\FeedStats;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class AllVideosFeedController extends Controller
 {
-    public function index(Request $request): Response
+    public function index(Request $request, FeedStats $feedStats): Response
     {
         $user = $request->user();
         $userId = $user->id;
@@ -20,8 +21,13 @@ class AllVideosFeedController extends Controller
 
         return Inertia::render('Videos/Feed', [
             'capEnabled' => $capEnabled,
+            'showWatched' => (bool) $user->feed_show_watched,
+            'starredOnly' => (bool) $user->feed_starred_only,
+            'stats' => Inertia::defer(fn () => $feedStats->for($user, $subscribedChannelIds), 'stats'),
+            // Group names per channel for the unsubscribe confirm modal.
+            'channelGroupMap' => Inertia::defer(fn () => $user->channelGroupMap(), 'channelGroupMap'),
             'videos' => Inertia::defer(function () use ($subscribedChannelIds, $userId, $capEnabled) {
-                // Pure DB read: ingestion is push-driven (WebSub) plus the scheduled poll paths.
+                // Pure DB read: ingestion is the scheduled channels:poll sweep.
                 return Video::query()
                     ->select([
                         'videos.id',

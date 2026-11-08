@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ChannelGroup;
 use App\Models\Video;
+use App\Services\FeedStats;
 use App\Services\RssFetcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -12,7 +13,7 @@ use Inertia\Response;
 
 class GroupFeedController extends Controller
 {
-    public function show(Request $request, ChannelGroup $group): Response|RedirectResponse
+    public function show(Request $request, ChannelGroup $group, FeedStats $feedStats): Response|RedirectResponse
     {
         $this->authorize('view', $group);
 
@@ -25,10 +26,18 @@ class GroupFeedController extends Controller
         $capEnabled = (bool) $request->user()->feed_cap_enabled;
 
         return Inertia::render('Groups/Show', [
-            'group' => $group->only(['id', 'name', 'icon']),
+            'group' => $group->only(['id', 'name', 'icon', 'color']),
             'capEnabled' => $capEnabled,
+            'showWatched' => (bool) $request->user()->feed_show_watched,
+            'starredOnly' => (bool) $request->user()->feed_starred_only,
+            'stats' => Inertia::defer(
+                fn () => $feedStats->for($request->user(), $group->channels()->pluck('channels.id')),
+                'stats'
+            ),
+            // Group names per channel for the unsubscribe confirm modal.
+            'channelGroupMap' => Inertia::defer(fn () => $request->user()->channelGroupMap(), 'channelGroupMap'),
             'videos' => Inertia::defer(function () use ($group, $userId, $capEnabled) {
-                // Pure DB read: ingestion is push-driven (WebSub) plus the scheduled poll paths.
+                // Pure DB read: ingestion is the scheduled channels:poll sweep.
                 return Video::query()
                     ->select([
                         'videos.id',

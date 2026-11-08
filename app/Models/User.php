@@ -14,7 +14,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
-#[Fillable(['name', 'email', 'password', 'feed_cap_enabled', 'shorts_hidden'])]
+#[Fillable(['name', 'email', 'password', 'feed_cap_enabled', 'feed_show_watched', 'feed_starred_only', 'shorts_hidden'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -33,6 +33,8 @@ class User extends Authenticatable
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
             'feed_cap_enabled' => 'boolean',
+            'feed_show_watched' => 'boolean',
+            'feed_starred_only' => 'boolean',
             'shorts_hidden' => 'boolean',
         ];
     }
@@ -57,6 +59,26 @@ class User extends Authenticatable
             ->join('channel_group_channel as cgc', 'cgc.channel_group_id', '=', 'channel_groups.id')
             ->distinct()
             ->pluck('cgc.channel_id');
+    }
+
+    /**
+     * Every subscribed channel mapped to the user's groups it sits in, keyed by
+     * channel ID: `[channel_id => [['id' => ..., 'name' => ...], ...]]`.
+     *
+     * @return array<int, list<array{id: int, name: string}>>
+     */
+    public function channelGroupMap(): array
+    {
+        return $this->channelGroups()
+            ->join('channel_group_channel as cgc', 'cgc.channel_group_id', '=', 'channel_groups.id')
+            ->orderBy('channel_groups.name')
+            ->get(['cgc.channel_id', 'channel_groups.id', 'channel_groups.name'])
+            ->groupBy('channel_id')
+            ->map(fn (Collection $rows) => $rows
+                ->map(fn ($row) => ['id' => (int) $row->id, 'name' => $row->name])
+                ->values()
+                ->all())
+            ->all();
     }
 
     public function favoritedChannels(): BelongsToMany

@@ -34,3 +34,10 @@ export function saveFeedCache<T extends object>(
 export function clearFeedCache(): void {
     cache.clear();
 }
+
+// Drop cached state for specific feeds only (e.g. `all`, `group:12`).
+export function forgetFeedCache(keys: Iterable<string>): void {
+    for (const key of keys) {
+        cache.delete(key);
+    }
+}

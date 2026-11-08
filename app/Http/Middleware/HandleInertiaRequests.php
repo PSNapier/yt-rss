@@ -54,11 +54,12 @@ class HandleInertiaRequests extends Middleware
                     ->visible()
                     ->withCount('channels')
                     ->orderBy('name')
-                    ->get(['id', 'name', 'icon'])
+                    ->get(['id', 'name', 'icon', 'color'])
                     ->map(fn (ChannelGroup $group) => [
                         'id' => $group->id,
                         'name' => $group->name,
                         'icon' => $group->icon,
+                        'color' => $group->color,
                         'channels_count' => $group->channels_count,
                     ])
                     ->values()

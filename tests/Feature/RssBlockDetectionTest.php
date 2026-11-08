@@ -63,20 +63,6 @@ test('it skips the sweep while cooldown is active', function () {
     Http::assertNothingSent();
 });
 
-test('it skips the websub backstop while cooldown is active', function () {
-    Http::fake(['*' => Http::response('ok', 200)]);
-
-    $channel = Channel::factory()->create(['last_fetched_at' => now()->subDays(30)]);
-
-    app(PollCooldown::class)->start('test');
-
-    $this->artisan('websub:backstop')
-        ->expectsOutputToContain('cooldown')
-        ->assertSuccessful();
-
-    Http::assertNothingSent();
-});
-
 test('a sweep that only fails without block signals keeps polling and raises a storm instead', function () {
     Http::fake(['*' => Http::response('', 500)]);
     config()->set('services.polling.block_failure_ratio', 0.5);

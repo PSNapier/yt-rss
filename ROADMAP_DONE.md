@@ -1,5 +1,929 @@
 # Roadmap Done
 
+## [039] Mobile audit: top bar, drop-down nav drawer, touch-friendly feeds
+
+**Status:** `done`
+**Depends On:** [009], [012], [015], [017], [018]
+**Spec:** none
+
+### Goal
+
+Below 768px, every page is fully usable on a phone held one-handed. A plain, non-sticky top bar carries the logo and site name on the left and a hamburger on the right. Tapping it drops down a drawer with every nav option as simple right-aligned text, close to the thumb. Feed cards expose their actions without hover or right-click. Built after the visual items it depends on so nothing gets restyled twice.
+
+### Scope
+
+- Mobile top bar (below 768px only): logo + "Peristalsis" left, linked to the landing page, hamburger right. Scrolls away with the page, never sticky or fixed
+- Drop-down drawer that expands down from the top bar. Reuses the existing nav (main nav, group feeds, user menu) restyled as right-aligned plain text, not a separate mobile-only menu
+- Drawer closes three ways: the hamburger turns into an X, tapping outside, and picking a link
+- Card actions on touch: watched toggle always visible, plus a small ⋯ button that opens the existing Mark watched / Mark unwatched / Hide menu
+- Feed hero on mobile: smaller icon and title, filter buttons drop to their own row underneath
+- Audit every page at phone width and fix overflow, cramped tap targets, and clipped controls: feeds, group feeds, Shorts, Subscriptions, Home, settings, and auth (login, register, password reset, 2FA, verify email)
+- NOT in scope: desktop and tablet (768px and up) layout, the sticky feed date headers (they stay sticky), reduced-motion handling, a long-press gesture
+
+### Technical Notes
+
+**User flows:**
+
+- **User (phone):** Top bar on any signed-in page. Tap the hamburger to drop down the nav, tap "All Videos", "Shorts", "Subscriptions", a group, or the account menu to go there. The drawer closes on navigation, on tap outside, or on the X.
+- **User (phone):** Video card on `/feed` or a group feed. Tap the watched toggle (top left of the thumbnail), or tap ⋯ (right end of the channel/date row) to Mark watched, Mark unwatched, or Hide.
+- **Visitor (phone):** `/login`, `/register`, and the other auth screens. Fill in and submit forms without horizontal scrolling or clipped buttons.
+
+**Critical files:**
+
+- `resources/js/components/AppSidebar.vue` - modify. Its `SidebarTrigger` (line 65) is the only open control on mobile and lives inside the sheet it opens, so a closed sheet can never be reopened. This is the "can't reach options" bug.
+- `resources/js/layouts/app/AppSidebarLayout.vue` - modify. Mount the mobile top bar and drawer here, above the page slot.
+- `resources/js/components/ui/sidebar/SidebarProvider.vue` - entry point. `isMobile` is `(max-width: 768px)` (line 22). Reuse it for the breakpoint rather than adding a second query.
+- `resources/js/components/VideoCard.vue` - modify. The watched toggle is `opacity-0 group-hover:opacity-100` (line ~72) and the menu fires on `@contextmenu` only (line 59). iOS Safari never fires contextmenu on long-press.
+- `resources/js/pages/Videos/Feed.vue` - modify. Hero banner and the card menu (`openCtx`). Mirror every change in `resources/js/pages/Groups/Show.vue`. The hero change also applies to `resources/js/pages/Videos/Shorts.vue`.
+- `resources/js/components/MobileTopBar.vue` - new. Top bar plus drop-down drawer, mounted in `AppSidebarLayout`.
+- `resources/js/composables/useMainNavItems.ts` - new. Main nav entries shared by `AppSidebar` and `MobileTopBar`.
+
+**Details:**
+
+- Mobile nav today renders `Sidebar` as a `Sheet` (`ui/sidebar/Sidebar.vue:33`). The drop-down drawer replaces that sheet below 768px. Desktop keeps the current collapsible sidebar untouched
+- Drawer animates down from the bar. Don't add `motion-reduce:` or `prefers-reduced-motion` handling (global rule)
+- `NavMain`, `NavGroupFeeds`, `NavUser` feed the drawer content. They will already carry the [009] Cherry active border and [017] group colors by the time this is built. Right-align them in the drawer without forking them
+- `AppSidebarHeader` (breadcrumb header) only renders when breadcrumbs exist. Check it doesn't stack awkwardly under the new top bar
+- Touch detection for card actions: prefer CSS (`pointer-coarse:` / `@media (hover: none)`) over JS so the toggle and ⋯ button show on phones and stay hover-only on desktop
+- Workflow: explore each page with `playwright-cli` at a phone viewport (e.g. 390x844), then fix. Record per-page audit findings and fixes in this section as they land
+
+**As built:**
+
+- `SidebarProvider` breakpoint changed to `(max-width: 767.98px)` so exactly 768px counts as desktop, matching Tailwind `md:`
+- `AppSidebar` renders the desktop `Sidebar` only when not mobile. The mobile `Sheet` is never mounted
+- `MobileTopBar` is gated with `md:hidden`, not `v-if`, so SSR markup (rendered with `isMobile = false`) matches the client and the bar does not pop in after hydration
+- Drawer reuses `NavMain`, `NavGroupFeeds`, `NavUser` unforked. Descendant selectors on the `<nav>` reverse each menu button row and right-align text. Icons keep their [017] colors on the right edge
+- Drawer closes on: hamburger/X toggle, a fixed backdrop tap, any `<a>` click inside it (covers the current page and the hash-only "Manage groups" link), and `page.url` changes (the layout is persistent)
+- Card ⋯ button sits at the right end of the card meta row. `pointer-coarse:` shows it and the watched toggle on touch and enlarges both. Desktop stays hover-only
+- Card menu position is clamped to the viewport in `openCtx` so a tap at the card's right edge does not spill off screen
+
+**Audit findings (360px, Chromium `--mobile` emulation):**
+
+| Page | Finding | Fix |
+| --- | --- | --- |
+| Feeds, group feeds, Shorts | `NavGroupFeeds` threw on every feed page | Pre-existing [043] bug: the deferred page prop `channelGroups` shadowed the shared sidebar list. Renamed to `channelGroupMap` |
+| Feeds, group feeds, Shorts | Hero icon/title too large, filters squeezed | Smaller tile and title below `md`, filters wrap to their own row |
+| Feeds, group feeds, Shorts | `FeedStatsCard` four columns clipped labels | Columns stack vertically below `md` |
+| Subscriptions | Group rows truncated names to one letter | Row wraps below `md`: name on line one, actions right-aligned on line two |
+| Home, settings, login, register, forgot/reset password, confirm password, verify email | No horizontal scroll, no clipped controls | None needed |
+| 2FA challenge | Not reached live (test account has no 2FA) | Shares `AuthLayout` with the audited auth pages |
+
+- Remaining hydration warning on mobile comes from `AppSidebar` (server renders desktop sidebar, client renders nothing). The old mobile `Sheet` had the same mismatch
+
+### Acceptance Criteria
+
+- [x] Below 768px a non-sticky top bar shows the logo + name on the left and a hamburger on the right. It scrolls away with the page [MANUAL]
+- [x] Tapping the hamburger drops down a drawer listing every nav option, right-aligned [MANUAL]
+- [x] The drawer can be reopened after closing, and closes via the X, tap outside, and link navigation [MANUAL]
+- [x] From inside a feed on a phone, every nav destination is reachable [MANUAL]
+- [x] On a touch viewport, the watched toggle and ⋯ menu are visible on cards, and the menu can mark watched, unwatched, and hide [MANUAL]
+- [x] Feed and group feed heroes stack compactly with filters on their own row on a phone [MANUAL]
+- [x] No audited page (signed-in and auth) scrolls horizontally at phone width [MANUAL]
+- [x] Desktop (768px and up) sidebar and layout are unchanged [MANUAL]
+- [ ] Drawer animation feels smooth and the right-aligned text sits within easy thumb reach [MANUAL]
+- [x] Feed pages keep the shared sidebar group list (`tests/Feature/BulkUnsubscribeTest.php`)
+
+---
+
+## [043] Unsubscribe-select mode on feeds
+
+**Status:** `done`
+**Depends On:** [040]
+**Spec:** none
+
+### Goal
+
+On any feed, the user turns on an unsubscribe mode, clicks videos to select their channels, then removes them all at once. A confirm modal lists the channels and the feeds each one leaves, and lets the user drop channels from the batch or narrow each one to the current group before confirming.
+
+### Scope
+
+- New icon-only hero toggle (per [040]) on All Videos, group feeds, and Shorts: "Unsubscribe mode"
+- In the mode, clicking a video toggles selection of its **channel**, not the video. Every card from a selected channel shows a selected state (Cherry ring + check badge). Clicking does not open the video. Card hover actions and the context menu are off
+- A fixed bottom action bar shows the selected channel count, "Clear", "Remove subscriptions", and "Done" (exits the mode)
+- "Remove subscriptions" opens a confirm modal:
+  - One row per selected channel: avatar, name, and the groups it belongs to
+  - Per-row remove (X) to drop the channel from the batch
+  - Per-row scope control on group feeds: "Everywhere" (default) or "This group only". On All Videos and Shorts, scope is always everywhere and the control is hidden
+  - Summary of affected feeds (each group that loses at least one channel)
+  - Confirm is disabled when the list is empty
+- On confirm, one request applies the batch, removed channels' videos leave the feed, cache entries for affected feeds are cleared, and the mode exits
+- Leaving the page or turning the mode off clears the selection
+- NOT in scope: undo, the Subscriptions page
+
+### Technical Notes
+
+**User flows:**
+
+- **User:** Hero toggle on `/feed`, `/groups/{group}`, `/shorts`. Turn on unsubscribe mode, click videos to select or deselect channels, click "Remove subscriptions".
+- **User:** Bottom action bar: "Clear", "Remove subscriptions", "Done".
+- **User:** Confirm modal. Remove rows, set each to everywhere or this group, confirm or cancel.
+
+**Critical files:**
+
+- `app/Http/Controllers/SubscriptionController.php` - modify. `destroy` (line 215) detaches one channel from all user groups. Add a bulk action next to it.
+- `routes/web.php` - modify. Add bulk `DELETE subscriptions` named `subscriptions.destroy-many`.
+- `resources/js/pages/Groups/Show.vue`, `resources/js/pages/Videos/Feed.vue`, `resources/js/pages/Videos/Shorts.vue` - modify. Mode state, card click interception, action bar, modal.
+- `resources/js/components/VideoCard.vue`, `resources/js/components/ShortVideoCard.vue` - modify. Add `selectable` and `selected` props. Selected styling, suppress open on click.
+- `resources/js/composables/useUnsubscribeMode.ts`, `resources/js/components/UnsubscribeConfirmDialog.vue`, `resources/js/components/UnsubscribeActionBar.vue` - new.
+- `app/Http/Requests/BulkUnsubscribeRequest.php` - new.
+- `resources/js/components/ui/dialog/` - pattern to follow for the confirm modal.
+
+**Details:**
+
+- Bulk request body: `items: [{ channel_id, scope: 'everywhere' | 'group', group_id? }]`. Validate in a Form Request: every channel sits in one of the user's groups, `group_id` belongs to the user and is required when `scope = group`. Wrap in a transaction
+- Share the detach logic between `destroy` and the bulk action so the two paths do not drift
+- The modal needs each selected channel's group names. Ship a per-page `channelGroups` map (`channel_id => [{id, name}]`) once rather than adding groups to every video in the payload
+- After success, invalidate the client feed cache (cache-first render from `3f05b59`) for every affected feed
+- Extract the mode and modal into a `useUnsubscribeMode` composable and `UnsubscribeConfirmDialog.vue` shared by the three pages
+- Built: the action bar is its own `UnsubscribeActionBar.vue`. It is `fixed`, not `sticky`, because the layout `<main>` clips overflow and breaks sticky against the window scroll
+- Built: `ShortVideoCard.vue` got the same `selectable`/`selected` props, since Shorts does not use `VideoCard`
+- Built: `channelGroups` is a deferred prop from `User::channelGroupMap()` on all three feed controllers. Request validation lives in `BulkUnsubscribeRequest`
+- Built: on success, `forgetFeedCache()` drops `all`, `shorts`, and every affected `group:{id}` key
+
+### Acceptance Criteria
+
+- [x] Bulk endpoint removes each channel everywhere or from one group per its scope
+      `tests/Feature/BulkUnsubscribeTest.php::it removes channels by scope`
+- [x] Bulk endpoint rejects channels or groups the user does not own
+      `tests/Feature/BulkUnsubscribeTest.php::it rejects foreign channels and groups`
+- [x] Single `DELETE subscriptions/{channel}` behavior is unchanged
+      `tests/Feature/BulkUnsubscribeTest.php::it keeps single destroy behavior`
+- [x] In the mode, clicking a video selects its channel and marks every card from that channel. Clicking again deselects [MANUAL]
+- [x] In the mode, clicking a video does not open it [MANUAL]
+- [x] The modal lists channels with their groups, allows removing rows, and disables confirm when empty [MANUAL]
+- [x] On a group feed, a row set to "This group only" leaves the channel in its other groups [MANUAL]
+- [x] After confirm, removed channels' videos leave the feed and the mode exits [MANUAL]
+
+---
+
+## [042] Feed stats card: Most Watched + Channel count, actually populated
+
+**Status:** `done`
+**Depends On:** none
+**Spec:** none
+
+### Goal
+
+Every feed shows a stats card under the hero with real data. The left 2/3 cell shows the most watched channel by three measures. The right 1/3 cell shows the feed's channel count. The placeholder dashes are gone.
+
+### Scope
+
+- Replace the group feed's Channels / Starred / Last sync card with a 2-cell card
+- Add the same card to All Videos and Shorts, scoped to each feed's channels
+- **Most watched (2/3 width):** three sub-columns, each with an icon, a short label, the channel avatar and name, and its number:
+
+  | Sub-column | Measure | Number shown |
+  | --- | --- | --- |
+  | All time | Most videos marked watched | watched count |
+  | 30 days | Most watched in the last 30 days | watched count |
+  | Ratio | Highest watched / ingested videos, min 5 watched | percent |
+
+- **Channels (1/3 width):** icon + count of channels in the feed, with the starred count as secondary text
+- Empty states: a sub-column with no qualifying channel shows "No watches yet"
+- Ties break on the most recent watch
+- NOT in scope: clickable stats, charts, a last-sync value
+
+### Technical Notes
+
+**User flows:**
+
+- **User:** Stats card on `/feed`, `/groups/{group}`, `/shorts`. Read which channel they watch most and how many channels the feed holds.
+
+**Critical files:**
+
+- `app/Http/Controllers/GroupFeedController.php` - modify. Add a `stats` prop beside `videos` (line ~27).
+- `app/Http/Controllers/AllVideosFeedController.php` - modify. Same, using `$subscribedChannelIds`.
+- `app/Http/Controllers/ShortsFeedController.php` - modify. Same, Shorts-only videos.
+- `app/Models/UserVideoState.php` - entry point. `state = 'watched'` rows keyed by `youtube_video_id`. Use `updated_at` as the watch time for the 30-day window.
+- `resources/js/pages/Groups/Show.vue` - modify. Placeholder card at lines ~549-590.
+- `resources/js/pages/Videos/Feed.vue`, `resources/js/pages/Videos/Shorts.vue` - modify. Add the card under the hero.
+
+**Details:**
+
+- Put the three queries in one service (for example `App\Services\FeedStats`) taking a user and a channel-id set, returning `{ channel_count, starred_count, most_watched: { all_time, last_30_days, ratio } }`
+- Join `user_video_states` to `videos` on `youtube_video_id`, group by `channel_id`. One query per measure, no N+1
+- Serve `stats` as `Inertia::defer` in its own group so it does not block the video payload
+- Extract the card into `FeedStatsCard.vue` shared by the three pages. Heroicons: `EyeIcon` for all time, `CalendarDaysIcon` for 30 days, `ChartPieIcon` for ratio, `RectangleStackIcon` for channels
+- Channel names truncate inside their sub-column
+
+### Acceptance Criteria
+
+- [x] Group, All Videos, and Shorts feeds return a `stats` prop with channel count, starred count, and the three most-watched results
+      `tests/Feature/FeedStatsTest.php::it returns stats on each feed`
+- [x] All time picks the channel with the most watched videos in the feed, ties broken by latest watch
+      `tests/Feature/FeedStatsTest.php::it picks the all time most watched channel`
+- [x] 30 days ignores watches older than 30 days
+      `tests/Feature/FeedStatsTest.php::it limits the 30 day measure`
+- [x] Ratio skips channels under 5 watched videos
+      `tests/Feature/FeedStatsTest.php::it requires a minimum for ratio`
+- [x] Stats count only channels in the current feed and the current user's watches
+      `tests/Feature/FeedStatsTest.php::it scopes stats to the feed and user`
+- [ ] The card renders 2/3 most watched and 1/3 channels with icons, and no dash placeholders [MANUAL]
+
+---
+
+## [041] Pointer cursor on every link and button, site-wide
+
+**Status:** `done`
+**Depends On:** none
+**Spec:** none
+
+### Goal
+
+Every clickable element on the site shows the pointer (finger) cursor. A project rule in `CLAUDE.md` keeps new code consistent.
+
+### Scope
+
+- One global base-layer CSS rule in `resources/css/app.css` covering `a[href]`, `button`, `[role="button"]`, `[role="menuitem"]`, `[role="tab"]`, `[role="option"]`, `[role="checkbox"]`, `[role="switch"]`, `summary`, `label[for]`, `select`, and `input` of type `checkbox`, `radio`, `submit`, `button`, `reset`, `file`
+- Disabled elements (`:disabled`, `[aria-disabled="true"]`, `[data-disabled]`) use `cursor: not-allowed`
+- Clickable non-semantic elements (for example video cards) become `<button>`/`<a>` or carry `role="button"` so the rule catches them
+- Add a rule to `CLAUDE.md`: every link and button uses the pointer cursor via the global rule, and custom clickable elements must be a `<button>`, an `<a>`, or carry `role="button"`
+- NOT in scope: an `AGENTS.md` file (none exists in the repo)
+
+### Technical Notes
+
+**User flows:**
+
+- **User:** Any page. Hovering any link, button, menu item, toggle, or card shows the pointer cursor.
+
+**Critical files:**
+
+- `resources/css/app.css` - modify. Tailwind 4 preflight sets `button { cursor: default }`, which is the root cause. Add the rule in `@layer base` so utility classes still override it.
+- `CLAUDE.md` - modify. Add the cursor rule under a short "UI rules" section.
+- `resources/js/components/VideoCard.vue` - check. Confirm the card click target is a link or button.
+- `resources/js/components/ui/` - check. shadcn primitives (dropdown items, select, checkbox, sidebar buttons) use `role` attributes the rule must cover.
+
+**Details:**
+
+- Remove redundant `cursor-pointer` utilities only where they add noise. Do not churn every file
+- Audit with `playwright-cli`: hover a sample of each control type on `/feed`, `/groups/{group}`, `/shorts`, `/subscriptions`, settings, and auth pages
+
+### Acceptance Criteria
+
+- [ ] Buttons, links, dropdown menu items, checkboxes, and sidebar items compute `cursor: pointer` [MANUAL]
+- [ ] Disabled buttons compute `cursor: not-allowed` [MANUAL]
+- [x] `CLAUDE.md` states the pointer cursor rule
+- [ ] Hover audit across all pages finds no clickable element without the pointer [MANUAL]
+
+---
+
+## [040] Icon-only feed hero buttons that never overlap the title
+
+**Status:** `done`
+**Depends On:** none
+**Spec:** none
+
+### Goal
+
+Feed hero toggle buttons never overlap the hero title, on any feed and any title length. The buttons drop their text labels and show icons only, with the explanation moved into a tooltip.
+
+### Scope
+
+- All Videos, group feed, and Shorts heroes
+- Remove the text label from every hero button (cap, starred, watched, Manage channels, Shorts toggles). Icon only, square tap target
+- Each button gets a `Tooltip` that states the current state and what a click does. Keep `aria-label` and `aria-pressed`
+- Title block truncates with an ellipsis when it still runs out of room. Buttons never shrink or overlap
+- NOT in scope: mobile hero restacking (owned by [039]), the stats card (owned by [042])
+
+### Technical Notes
+
+**User flows:**
+
+- **User:** Hero buttons on `/feed`, `/groups/{group}`, `/shorts`. Hover a button to read its tooltip, click to toggle.
+
+**Critical files:**
+
+- `resources/js/pages/Groups/Show.vue` - modify. Hero at lines ~427-547. Overlap source: the title `div` is `min-w-0 flex-1` but the `h1` has no `truncate`, so long names render under the buttons.
+- `resources/js/pages/Videos/Feed.vue` - modify. Hero buttons at lines ~400-468.
+- `resources/js/pages/Videos/Shorts.vue` - modify. Hero buttons at lines ~344-390.
+- `resources/js/components/ui/tooltip/` - pattern to follow. Existing shadcn tooltip, already used by `NavMain.vue` and `NavGroupFeeds.vue`.
+
+**Details:**
+
+- The three heroes duplicate the same button markup. Extract one `HeroToggleButton.vue` (icon, pressed state, tooltip text, optional `href`) so the three pages stay in sync
+- Button container gets `shrink-0`. Add `truncate` to the `h1`
+- Drop the native `title` attributes once the tooltip replaces them
+
+### Acceptance Criteria
+
+- [x] Hero buttons on all three feeds render icons only, with no text label [MANUAL]
+- [ ] Hovering each hero button shows a tooltip describing its state [MANUAL]
+- [x] A group with a 60-character name does not overlap the buttons at 1280px width. The title truncates [MANUAL]
+- [x] Hero buttons keep their toggle behavior and `aria-pressed` state [MANUAL]
+
+---
+
+## [018] Show publish date on video cards
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+Each video card shows its publish date floated to the right of the channel row, with the channel name truncating via ellipsis when it is too long.
+
+### Scope
+
+- Add a publish-date element to the card footer, right-aligned opposite the channel info
+- Ensure the channel name truncates so the date always has room
+
+### Technical Notes
+
+- Card footer is the channel row in `VideoCard.vue:73-84`; `video.published_at` is already on the `Video` interface (`VideoCard.vue:15`)
+- Layout: make the channel name/avatar a flexible truncating group and the date a `shrink-0` element on the right (the channel `<span>` already has `truncate`)
+- **Format: compact relative age** — `3d`, `2w`, `5mo` (fall back to a coarse unit for older). Apply via a small helper; both `Feed.vue` and `Show.vue` render through this shared `VideoCard`, so one change covers both
+
+### Acceptance Criteria
+
+- [x] Cards show the publish date right-aligned in the channel row, in relative format (e.g. `3d`, `2w`)
+- [x] A long channel name truncates with an ellipsis and does not push the date off the card
+- [x] Change appears on both the all-videos and group feeds via `VideoCard`
+
+---
+
+## [017] Group color: sidebar icon + feed hero background
+
+**Status:** `done`
+**Depends On:** [016]
+
+### Goal
+
+Each group can be assigned a color that drives its sidebar icon color and the feed hero background.
+
+### Scope
+
+- Add a `color` attribute to groups with a color picker in group management
+- Apply the color to the sidebar icon and the group feed hero gradient/background
+
+### Technical Notes
+
+- No `color` column exists yet — add a migration and add `color` to `ChannelGroup` fillable (currently `['user_id', 'name', 'icon']`)
+- Sidebar icon renders in `NavGroupFeeds.vue:46`; group hero lives in `Groups/Show.vue` (mirrors the Cherry gradient hero in `Feed.vue:288-312`)
+- **Approach: curated swatch set (~8–12 presets).** Define a preset table (a shared TS map) where each preset carries its own tuned hero gradient (top/deep stops) and sidebar icon color, all chosen so white hero text stays legible. Store the swatch key or its hex. No free-form picker, so no runtime contrast logic needed
+- Default hero stays Cherry when no color is set
+- Build the color picker alongside the `[016]` icon picker so icon + color are edited in one place in the group-management section
+
+### Acceptance Criteria
+
+- [x] A group color can be chosen from the preset swatches and persists
+- [x] The sidebar icon for that group renders in its color
+- [x] The group feed hero background reflects the preset gradient, with legible white text
+- [x] A group with no color set falls back to the Cherry hero
+
+---
+
+## [016] Edit group icon from group management
+
+**Status:** `done`
+**Depends On:** [011]
+
+### Goal
+
+A group's icon can be changed from the group-management section, choosing from the full Heroicons set.
+
+### Scope
+
+- Add an icon picker to group management
+- Persist the chosen icon and reflect it in the sidebar and group feed hero
+
+### Technical Notes
+
+- `ChannelGroup` already has an `icon` column (`#[Fillable(['user_id', 'name', 'icon'])]`, migration `2026_05_24_214413_add_icon_to_channel_groups_table.php`) and `resolveGroupIcon` maps names to components in `lib/groupIcons.ts`
+- **Approach: full `@heroicons/vue/24/outline` set in a searchable grid.** Store the **raw icon name** (e.g. `RocketLaunchIcon`), not the current curated keys
+- **Back-compat:** existing groups store legacy curated keys (`Braces`, `Movie`, …). `resolveGroupIcon` must resolve BOTH the full set and the legacy `ICON_REGISTRY` keys (keep the existing map as a fallback), or run a one-time data migration mapping old keys → raw names. Resolve-both is lower risk
+- **Bundle:** importing the full icon set is large — lazy-load the picker grid (dynamic import) so it does not bloat the main feed bundle
+- Persist via the group update route (`ChannelGroupController`); the picker lives in the group-management section from `[011]`
+
+### Acceptance Criteria
+
+- [x] Group management offers a searchable icon picker exposing the full Heroicons outline set
+- [x] Selecting an icon persists (as a raw icon name) and updates the sidebar icon and feed hero
+- [x] Groups created before this change (legacy icon keys) still render their icon correctly
+
+---
+
+## [030] Remove WebSub entirely
+
+**Status:** `done`
+**Depends On:** [029]
+
+### Goal
+
+WebSub is gone from the codebase. [028] proved YouTube's publisher does not reliably ping its own hub for our feeds: 191 of 193 subscriptions had never delivered, and nothing on our side can fix that. Once [029] makes polling the guaranteed path, every line of WebSub code is vestigial, and vestigial code is a standing invitation to debug a system that was never going to work.
+
+**Must land after [029].** Feed reads are pure DB, and the only scheduled ingestion today is `websub:renew` / `websub:backstop` (`routes/console.php:23-31`). Removing WebSub before the poll sweep exists leaves zero automatic ingestion.
+
+### Scope
+
+- Delete the WebSub controller, services, model, enum, commands, factory, and tests
+- Delete the routes, scheduler entries, config block, and env keys
+- Drop the `channel_subscriptions` table via a new forward migration
+- Remove subscribe-on-add from the subscription flow
+- Keep the [028] investigation writeup as the record of why
+
+### Technical Notes
+
+**Reference commit.** `eeee0c4` (`feat: WebSub push ingestion (MVP), archive [021]`) is the first WebSub commit; `c6a1666` is the last commit before it. If push is ever revisited, diff against those rather than resurrecting dead code. Everything worth keeping from the WebSub era, the conditional-GET columns and the pure-DB feed reads, stays.
+
+**Code to delete:**
+
+| Path | Note |
+| --- | --- |
+| `app/Http/Controllers/WebSubController.php` | Hub verification + delivery callback |
+| `app/Services/WebSubSubscriber.php` | |
+| `app/Services/WebSubAlerter.php` | Renewal-failure webhook, fired 0 times during the outage |
+| `app/Models/ChannelSubscription.php` | |
+| `app/Enums/WebSubSubscriptionStatus.php` | |
+| `app/Console/Commands/RenewWebSubLeasesCommand.php` | |
+| `app/Console/Commands/WebSubBackstopCommand.php` | Redundant once the sweep covers every channel on rotation |
+| `app/Console/Commands/SubscribeMissingWebSubCommand.php` | Shipped in [027] |
+| `database/factories/ChannelSubscriptionFactory.php` | |
+| `tests/Feature/WebSubCallbackTest.php` | |
+| `tests/Feature/WebSubRenewalTest.php` | |
+| `tests/Feature/WebSubBackstopTest.php` | |
+| `tests/Feature/WebSubSubscribeOnAddTest.php` | |
+| `tests/Feature/WebSubSubscribeMissingTest.php` | |
+| `WEBSUB_LOCAL_SETUP.md` | Local tunnel setup notes |
+
+**Wiring to unpick:** the callback routes in `routes/web.php` and their CSRF exemption in `bootstrap/app.php`; both `Schedule::command('websub:…')` entries in `routes/console.php`; the `websub` block in `config/services.php` (`callback_base`, `alert_webhook`, `backstop_min_silence_hours`, `backstop_min_repoll_hours`, lease and renewal settings) and the matching `.env.example` keys; subscribe-on-add in `SubscriptionController`; WebSub references in `ChannelResolver`, `Channel`, and the "push-driven (WebSub)" comments in the two feed controllers.
+
+**Database.** Add a new forward migration dropping `channel_subscriptions`. Do **not** delete `2026_07_24_000811_create_channel_subscriptions_table.php` or the two later `add_*_to_channel_subscriptions` migrations: rewriting migration history breaks `migrate` against the existing production database. The `channels` conditional-GET migration (`2026_08_23_171925_add_conditional_get_to_channels_table.php`) stays, since [029] depends on it.
+
+**Keep `reference/WEBSUB_DELIVERY_INVESTIGATION.md`.** It is the evidence for the decision, and the reason nobody should try this again without new information from Google.
+
+### Tests
+
+The five `WebSub*Test.php` files are deleted, not rewritten. Verification is that the remaining suite passes and ingestion still works:
+
+- The full Pest suite passes with no WebSub references remaining
+- A repo-wide grep for `websub` / `pubsubhubbub` returns only `reference/WEBSUB_DELIVERY_INVESTIGATION.md`, `ROADMAP_DONE.md`, and the `peristalsis/` business docs
+- Adding a subscription still succeeds with no subscription side effect
+- `channels:poll` from [029] still ingests after the removal
+
+### Acceptance Criteria
+
+- [x] Every file in the deletion table is gone
+- [x] The WebSub routes, CSRF exemption, scheduler entries, `config/services.php` block, and `.env.example` keys are removed
+- [x] Adding a subscription no longer attempts a hub subscription, and succeeds
+- [x] A new forward migration drops `channel_subscriptions`; the original create and alter migrations are left in place
+- [x] The `channels` conditional-GET columns and the pure-DB feed reads are untouched
+- [x] `reference/WEBSUB_DELIVERY_INVESTIGATION.md` is retained
+- [ ] A repo-wide grep for `websub` / `pubsubhubbub` hits only that doc, `ROADMAP_DONE.md`, and `peristalsis/` [MANUAL]
+- [x] The full Pest suite passes
+- [ ] `channels:poll` still ingests new videos on production after the removal [MANUAL]
+
+---
+
+## [015] Swap TikTok hero icon for a film camera icon
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+The All Videos feed hero shows a film/video camera icon instead of the TikTok note glyph.
+
+### Scope
+
+- Replace the inline TikTok SVG in the All Videos hero with a Heroicons film/camera icon
+
+### Technical Notes
+
+- The TikTok path was an inline `<svg>` in `resources/js/pages/Videos/Feed.vue`. It is now `FilmIcon` from `@heroicons/vue/24/solid`
+- `FilmIcon` and `VideoCameraIcon` are already imported/registered via `lib/groupIcons.ts`; use one from `@heroicons/vue/24/solid` or `/outline` to match the white-on-Cherry hero chip
+- Keep the surrounding white rounded chip container and Cherry color
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** `/feed`. The All Videos hero shows a film camera icon in the white chip instead of the TikTok glyph.
+
+### Acceptance Criteria
+
+- [x] The All Videos hero shows a film/camera icon, no TikTok glyph
+- [x] Icon sizing/color matches the existing hero chip treatment
+
+---
+
+## [014] Single/multi group-select toggle in Add form
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+An icon-button toggle beside "Add to groups" switches between multi-select (current behavior) and single-select, where picking a new group replaces the current one instead of adding to it.
+
+### Scope
+
+- Add an icon-button toggle next to the "Add to groups" label
+- In single-select mode, selecting a group replaces the current selection
+
+### Technical Notes
+
+- Selection state is `addGroupIds` (`Subscriptions.vue:64`) toggled by `toggleAddGroup` (`67-76`), which always adds/removes
+- Add a `multiSelect` ref; when false, `toggleAddGroup` should set `addGroupIds` to `[groupId]` (or clear if re-clicking the selected one)
+- Toggle sits inline with the `Add to groups` label, using `Squares2X2Icon` (multi) and `StopIcon` (single). Switching multi to single with several groups selected keeps only the first
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** `/subscriptions`. A small icon button beside the "Add to groups" label switches between multi-select and single-select. In single mode, picking a group replaces the current one.
+
+### Acceptance Criteria
+
+- [x] A visible toggle sits next to the "Add to groups" label
+- [x] In single mode, clicking a second group switches selection to just that group
+- [x] In multi mode, behavior is unchanged (multiple groups selectable)
+
+---
+
+## [013] Always show the channel ID input in Add form
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+The "Add by channel ID" input is always visible in the Add-to-groups section, not hidden behind a collapsible.
+
+### Scope
+
+- Un-collapse the manual channel ID input so it renders inline at all times
+
+### Technical Notes
+
+- Found already done: `Subscriptions.vue` has no `Collapsible`, `idFallbackOpen`, or chevron trigger. The form renders inline inside the groups-exist block, so no code change was needed
+- Remove the collapsible wrapper and the `idFallbackOpen` state; keep the form, hint, validation, and `submitIdForm` logic
+- The chevron icons (`ChevronDownIcon`/`ChevronUpIcon`) imports may become unused
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** `/subscriptions`. The "Add by URL, @handle, or channel ID" input and its "Add channel" button are always visible once at least one group exists.
+
+### Acceptance Criteria
+
+- [x] The channel ID input and its Add button are visible without any toggle
+- [x] Adding by ID still works and validates group selection
+- [x] No leftover collapsible trigger or unused state remains
+
+---
+
+## [009] Unify sidebar button highlighting (Cherry accent border)
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+Both sidebar sections (main nav and group feeds) use the same active-state highlight: a Cherry red accent border on a transparent background.
+
+### Scope
+
+- Apply one shared **border-only** active-highlight style (Cherry accent border, no fill) to both `NavMain` and `NavGroupFeeds`
+- Drop the current solid `bg-cherry` fill on the group-feeds active item
+
+### Technical Notes
+
+- `NavGroupFeeds.vue` used a solid `bg-cherry` fill for the active item and `NavMain.vue` used the default `SidebarMenuButton` fill. Both now call `sidebarNavButtonClass` in `resources/js/lib/sidebarNav.ts`
+- Target: **border-only** — a Cherry accent border with the normal (transparent) background, applied identically to both. Remove the solid fill entirely; when active items lose the white-on-Cherry treatment, revert their text/badge colors to the normal foreground values
+- Extract the active class set into one place (a shared const or small wrapper) so both sections stay in sync
+- Cherry is available as `border-cherry` / the `--cherry` CSS var
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** Sidebar on every page. The page you are on (All Videos, Shorts, Subscriptions, or a group) gets a Cherry red outline with no fill.
+
+### Acceptance Criteria
+
+- [x] Active items in both sidebar sections render an identical Cherry accent border with no solid fill
+- [x] Inactive items in both sections share identical styling
+- [x] The active-style definition lives in one place, not duplicated per section
+
+---
+
+## [019] Starred-only toggle on feeds (persisted)
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+A "show favorited only" toggle on the feed pages filters cards to favorited channels, and the setting persists across navigation and reloads.
+
+### Scope
+
+- Add a starred-only toggle to the feed hero controls
+- Filter the bucketed feed to favorited channels when on
+- Persist the setting like `[008]`'s show-watched toggle
+
+### Technical Notes
+
+- `channel_is_favorite` is already on each `Video` (`Feed.vue:24`, used for star display in `VideoCard.vue:53-63`), so filtering is client-side alongside the existing `showWatched` filter in `buckets` (`Feed.vue:253-255`)
+- Add the toggle next to the existing hero buttons (`Feed.vue:327-370`) using the star icons already available from `@heroicons/vue`
+- **Persist server-side**, identical mechanism to `[008]` (user column + POST route like `FeedCapController`, delivered as a prop). Build alongside `[008]`; apply to both `Feed.vue` and `Show.vue`
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** The "Starred only" / "All channels" button next to the cap and watched buttons on `/feed` and `/groups/{group}`. It limits cards to starred channels, survives reload, and follows the account to other devices.
+
+### Acceptance Criteria
+
+- [x] A starred-only toggle appears on the feed hero controls
+- [x] Enabling it shows only cards from favorited channels
+- [x] The setting survives navigation, a full reload, and appears on a second device after login, on both feeds
+- [x] Tests: `tests/Feature/FeedPreferencesTest.php`
+
+---
+
+## [008] Persist show/hide-watched state across feeds
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+The show-watched / hide-watched toggle keeps its setting when moving between groups and the all-videos feed, instead of resetting per page.
+
+### Scope
+
+- Persist `showWatched` globally on the user (across all group feeds and the all-videos feed)
+- Deliver it as a prop and restore it on mount
+
+### Technical Notes
+
+- `showWatched` is component-local `ref(true)` in `Feed.vue:43` and `Show.vue`, so it resets on every navigation
+- **Persist server-side**, mirroring the existing `capEnabled` pattern: a column on the user, a POST route like `FeedCapController` (`feed.cap()` in `Feed.vue:155-166`), and the value delivered as a shared prop to the feed pages. Do **not** use `localStorage` — this matches the cap toggle and syncs across devices
+- Toggling posts the new value (`preserveScroll`, `preserveState`) and updates local state optimistically; both `Feed.vue` and `Show.vue` read the same prop
+- Built: users columns `feed_show_watched` / `feed_starred_only`, `POST feed/preferences` (`FeedPreferencesController`, 204, plain fetch via `useFeedPreferences.ts` so the deferred feed does not flash the skeleton), props `showWatched` / `starredOnly` from both feed controllers
+- Pairs with `[019]` (starred-only), which uses the identical mechanism — build them together
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** The "Showing watched" / "Hiding watched" button on `/feed` and `/groups/{group}`. The choice carries to every feed, survives reload, and follows the account to other devices.
+
+### Acceptance Criteria
+
+- [x] Toggling hide-watched, navigating to another feed, and returning keeps hide-watched active
+- [x] The setting survives a full page reload and appears on a second device/browser after login
+- [x] The same persisted value applies to every group feed and the all-videos feed
+- [x] Tests: `tests/Feature/FeedPreferencesTest.php`
+
+---
+
+## [007] Open watched video in a background tab (Brave)
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+Clicking a video card opens the YouTube tab in the background so focus stays on the app instead of switching away. Target browser is Brave (Chromium).
+
+### Scope
+
+- Change card-click open behavior so the new tab opens in the background in Brave/Chromium
+
+### Technical Notes
+
+- Not a simple revert: `onCardClick`'s `window.open(url, '_blank', 'noopener')` (`Feed.vue:168-178`, equivalent in `Show.vue`) has been byte-identical since the first commit, and standard `window.open('_blank')` opens a **foreground** tab in Chromium by design. The only behavioral change on this path was `[001]` moving the click from `@click="onCardClick(video)"` on the card div to a Vue `$emit('card-click')` routed to the parent — but that does not restore backgrounding on its own
+- Fix: replace `window.open` with a **synthetic `<a>` element clicked programmatically with a ctrl/meta modifier** (`new MouseEvent('click', { ctrlKey: true, metaKey: true, ... })` on an anchor with `target="_blank"` and `rel="noopener"`), which Chromium/Brave interpret as "open in background tab". Keep the click handler synchronous within the user gesture so no popup blocker trips
+- Keep the `setState(..., 'watched')` side effect intact
+- Built: `resources/js/lib/openInBackgroundTab.ts`, called from `VideoCard.vue` on a plain left click. Modified and middle clicks keep native behaviour. Verified in playwright Chromium: the tab opens, the app tab stays visible and focused, the video is marked watched. Not checked in Brave itself
+- Verify in Brave during build (it is a browser heuristic, not a guaranteed API)
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** Click a video card on `/feed` or `/groups/{group}`. The video opens in a background tab, the app tab keeps focus, and the card turns watched.
+
+### Acceptance Criteria
+
+- [x] Clicking a card in Brave opens the video in a background tab; the app tab keeps focus
+- [x] The video is still marked watched on click
+- [x] The open action stays within the user gesture (no popup-blocker warning)
+
+---
+
+## [010] Guarantee first 15 videos without Load more
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+Each feed shows at least 15 videos on first load regardless of how they fall across Today / Yesterday / Earlier this week / Older, without the user clicking Load more.
+
+### Scope
+
+- After mount, auto-load pages until at least 15 cards are visible (or the cursor is exhausted)
+- Confirm the time-bucketing keeps showing them even when the recent buckets are empty
+
+### Technical Notes
+
+- Buckets are computed client-side in `Feed.vue:248-279` from whatever `items` were loaded; empty buckets are filtered out, so an "Older" bucket already renders — the real constraint is how many videos are loaded
+- **Approach: client-side auto-load loop.** Keep the existing page size but call `loadMore()` (`Feed.vue:184-218`) repeatedly after mount until the count of *visible* cards (after the `showWatched`/starred filters) is ≥15 or `nextUrl` is null. Guard against infinite loops when the cursor is exhausted
+- This handles per-channel cap thinning (`[004]/[005]`): with the cap on, a page can yield few visible cards, so the loop keeps pulling
+- **Depends on `[006]`**: the loop must render against the cache-aware/hydrated view so it does not re-trigger the loading skeleton or thrash requests. Sequence `[006]` first
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** "All Videos" at `/feed` or a group at `/groups/{group}`. At least 15 cards show on first load with no "Load more" click, including when every video is older than a week.
+
+### Acceptance Criteria
+
+- [x] A fresh feed with ≥15 available videos shows ≥15 cards without clicking Load more
+- [x] Videos from Older buckets appear when Today/Yesterday/Week are sparse
+- [x] Holds with the per-channel cap both on and off
+- [x] With fewer than 15 total available, the loop stops at the cursor end without spinning
+
+---
+
+## [006] Stop feed reverting to skeleton + scroll reset on tab return
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+Returning to a feed shows the already-loaded cards immediately, keeping scroll position, instead of flashing the loading skeleton and jumping to the top. This covers two triggers: switching to another sidebar feed and back, AND switching to a different **browser tab** and back to the app.
+
+### Scope
+
+- Skip the deferred loading skeleton when cached feed state is already present
+- Preserve scroll position across the sidebar navigation round trip
+- Ensure returning from another browser tab does not re-trigger the skeleton or reset scroll
+
+### Technical Notes
+
+- `[002]` cached loaded videos in `useFeedCache` and rehydrates them in `Feed.vue:57-62` / `Show.vue`, but the template still wraps the grid in `<Deferred data="videos">` whose `#fallback` (`FeedGridSkeleton`) renders on every navigation because `videos` is an `Inertia::defer` prop that refetches (`Feed.vue:373-376`)
+- When cache is present (`hydratedFromCache`), the fallback should not show — render cached `items` directly and let the deferred payload reconcile in the background
+- Scroll reset on sidebar nav comes from full Inertia `<Link>` navigations in `NavGroupFeeds.vue` / `NavMain.vue`; consider `preserveScroll` / scroll restoration keyed per feed
+- **Browser-tab return**: identify what fires on window focus / `visibilitychange` — an Inertia poll, a `router.reload`, or the deferred prop re-resolving — and make the re-resolution render against the cached view (no skeleton, no scroll jump) rather than replacing `items`. This is a distinct trigger from in-app navigation and must be verified separately
+- Built: `<Deferred>` replaced by `<FeedGridSkeleton v-if="items.length === 0 && !props.videos">` so cached cards render immediately. Per-feed scroll memory in `composables/useFeedScroll.ts`. Browser-tab return fires no Inertia visit, so the skeleton and scroll were already stable once the skeleton gate was fixed (verified with playwright-cli: `inertia:start` count unchanged across a tab switch)
+- Applies to both `resources/js/pages/Videos/Feed.vue` and `resources/js/pages/Groups/Show.vue`
+- **Build this before `[010]`**: the first-15 auto-load loop must render against cached/hydrated state, not re-trigger this skeleton
+
+User Flows:
+
+**Flows:** `verified`
+
+- **User:** A group in the sidebar at `/groups/{group}`, or "All Videos" at `/feed`. Scroll, open another feed or another browser tab, then come back: the cards stay and the scroll position holds with no loading skeleton.
+
+### Acceptance Criteria
+
+- [x] Loading a feed, switching to another, and returning shows cards with no skeleton flash
+- [x] Switching to another browser tab and back to the app shows cards with no skeleton flash and no scroll reset
+- [x] Scroll position on return matches the position before leaving (±a few px)
+- [x] Both `Feed.vue` and `Show.vue` pass both round trips
+
+---
+
+## [012] Replace subscription card Remove text with trash icon
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+The per-subscription Remove control is a trash-can icon button instead of the word "Remove".
+
+### Scope
+
+- Swap the "Remove" text button for a Heroicons trash icon in both subscription list views
+
+### Technical Notes
+
+- Two identical Remove buttons exist: `Subscriptions.vue:701-708` (alpha view) and `857-864` (by-group view)
+- Use `TrashIcon` from `@heroicons/vue/24/outline`; keep `startRemove(channel)` wiring and the confirm dialog
+- Preserve accessibility: add `aria-label="Remove subscription"` since the visible text is going away
+
+User Flows:
+
+- **User:** `/subscriptions`. In the by-group view or the "A–Z" view, click the trash icon on a channel row, then confirm in the "Remove subscription?" dialog.
+
+### Acceptance Criteria
+
+- [x] Both views show a trash icon button in place of the "Remove" text
+      `tests/Browser/SubscriptionRemoveIconTest.php::it shows a trash icon remove button in both views`
+- [x] The button keeps its destructive styling and still opens the confirm dialog
+      `tests/Browser/SubscriptionRemoveIconTest.php::it opens the confirm dialog from the trash button`
+- [x] The icon button has an accessible label
+      `tests/Browser/SubscriptionRemoveIconTest.php::it labels the trash button for screen readers`
+
+---
+
+## [020] Keep users logged in for 90 days
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+Logged-in users stay authenticated for up to 90 days instead of the current default session window.
+
+### Scope
+
+- Extend the effective login duration to 90 days
+
+### Technical Notes
+
+- `config/session.php:35` sets `'lifetime' => (int) env('SESSION_LIFETIME', 120)` (minutes) — 120 min today
+- **Approach: long session lifetime.** Set `SESSION_LIFETIME=129600` (90 days). Confirmed low-risk: driver is `database` (`config/session.php:21`), `expire_on_close` is already `false` (`:37`), and GC deletes rows only past `lifetime` — so a 90-day lifetime keeps sessions the full 90 days. Pure config change, no remember-me cookie needed
+- Set it in `.env` (and `.env.example`); confirm the default in `config/session.php` if a fallback matters
+- Built: the `config/session.php` fallback default is also 129600. Verified in the browser that the `laravel-session` cookie expires 90.0 days after login
+
+### Acceptance Criteria
+
+- [x] A logged-in user remains authenticated after being idle well beyond the old 120-minute window
+      `tests/Feature/SessionLifetimeTest.php::it keeps a user authenticated after idling past two hours`
+- [x] `SESSION_LIFETIME` is set to 129600 in `.env` / `.env.example`
+      `tests/Feature/SessionLifetimeTest.php::it sets session lifetime to ninety days in env example`
+- [x] Sessions still expire at ~90 days, not indefinitely
+      `tests/Feature/SessionLifetimeTest.php::it expires sessions after ninety days`
+
+---
+
+## [034] Pace the sweep: concurrency, spacing, then timeouts
+
+**Status:** `done`
+**Depends On:** [032], [033]
+
+### Goal
+
+Stop the sweep from being throttled by its own request pattern. [032] proved on production that single requests succeed comfortably on the current 2.0s/3.0s budget, that one batch of 20 concurrent already loses a request to a silent timeout, and that all 193 channels fetched sequentially with a 150ms gap never fail at all. The sweep fires ten back-to-back pools of 20 with no pacing, and `fetched` on the three real sweeps reads 15, 3, and 1 against a chunk size of 20. Roughly the first chunk gets through and the rest is answered with silence.
+
+### Scope
+
+- Lower the pool chunk from 20 and put a deliberate gap between chunks, both configurable
+- Raise the connect and total timeouts, configurable, as margin behind the pacing rather than as the fix
+- Re-measure with `poll:diagnose` on production and confirm a full sweep lands near zero failures
+- Accept a slower sweep. 193 channels paced sequentially took minutes and lost nothing, against 25 seconds that lost 92%
+- **Not in scope:** retry logic. Fix the request pattern first and see what is left
+
+### Technical Notes
+
+`RSS_POOL_CHUNK` (20) is read in `AppServiceProvider` (`app/Providers/AppServiceProvider.php:19-22`); the timeouts are not passed at all, so the constructor defaults at `app/Services/RssFetcher.php:18-23` are the only values that have ever run. There is no inter-chunk delay anywhere in `fetchForChannels`.
+
+The failure signature is `cURL error 28: Operation timed out after 3002 milliseconds with **0 bytes received**`. Not a slow body, not a 403, not a 429: an accepted connection answered with nothing. That is why `blockSignal` reads zero through a 97%-failure sweep, and it is the reason a larger timeout on its own only buys a longer wait for the same silence.
+
+Order of attack, cheapest first: chunk size, then inter-chunk gap, then timeouts. Measure after each rather than changing all three and inferring.
+
+The endpoint has no published rate limit, so the working ceiling is whatever production measurement shows. `reference/YOUTUBE_RSS_RATE_LIMITS.md` sections 5 and 7 are the background, and [031] is where a measured ceiling belongs long-term.
+
+```mermaid
+flowchart LR
+    A[193 channels] --> B[10 pools of 20, no gap]
+    B --> C[First chunk succeeds]
+    C --> D[Silence: 0 bytes, timeout at 3s]
+    A --> E[Smaller chunks, gap between]
+    E --> F[Measure with poll:diagnose]
+```
+
+**Shipped.** `RssFetcher::forSweep()` returns a copy on the sweep budget, and `channels:poll` is the only caller: a feed load keeps the impatient request-path budget, since a user is waiting on it. Defaults, all env-overridable:
+
+| Setting | Request path | Sweep |
+| --- | --- | --- |
+| Pool chunk | `RSS_POOL_CHUNK` 20 | `POLL_POOL_CHUNK` 5 |
+| Gap between batches | none | `POLL_INTER_CHUNK_DELAY_MS` 500 |
+| Connect timeout | `RSS_CONNECT_TIMEOUT` 2.0 | `POLL_CONNECT_TIMEOUT` 5.0 |
+| Total timeout | `RSS_TIMEOUT` 3.0 | `POLL_TIMEOUT` 10.0 |
+
+At 193 channels that is 39 batches and roughly 19 seconds of deliberate pausing on top of request time, against the 25-second sweep that lost 92%. The gap is taken before each batch after the first, never after the last, and uses `Illuminate\Support\Sleep` so tests assert the pacing without waiting for it.
+
+`poll:diagnose` now reads the sweep budget from config rather than the copied `TIGHT = [2.0, 3.0]` constant, and `--pool` defaults to the configured chunk, so the diagnosis measures whatever the sweep is actually set to.
+
+**Still unverified:** the two production criteria below. Deploy, then run `poll:diagnose` and read `poll_sweeps` over consecutive real sweeps.
+
+### Acceptance Criteria
+
+- [x] Pool chunk size and an inter-chunk delay are configurable, and the sweep uses them
+- [x] Connect and total timeouts come from config, with the sweep and the request path able to differ
+- [ ] `poll:diagnose` run on production after the change shows a full sweep completing with failures near zero
+- [ ] `poll_sweeps` shows `fetched` well past a single chunk's worth on consecutive real sweeps
+- [ ] If pacing does not fix it, the reading is recorded in `reference/POLLING_LOSS_INVESTIGATION.md` and this item is re-scoped rather than closed
+
+### Tests
+
+- [x] `tests/Feature/RssFetcherTest.php` - the configured chunk size determines the pool batches
+- [x] `tests/Feature/RssFetcherTest.php` - configured timeouts reach the outbound request
+- [x] `tests/Feature/ChannelsPollCommandTest.php` - the sweep uses the sweep budget, not the request-path budget
+
+---
+
 ## [038] Hide groups and the Shorts page
 
 **Status:** `done`

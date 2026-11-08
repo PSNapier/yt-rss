@@ -2,9 +2,13 @@
 import {
     EyeIcon as EyeIconSolid,
     EyeSlashIcon as EyeSlashIconSolid,
+    CheckIcon as CheckIconSolid,
+    EllipsisHorizontalIcon,
     StarIcon as StarIconSolid,
 } from '@heroicons/vue/24/solid';
 import { computed } from 'vue';
+import { openInBackgroundTab } from '@/lib/openInBackgroundTab';
+import { relativeAge } from '@/lib/relativeAge';
 
 interface Channel {
     id: number;
@@ -23,17 +27,49 @@ interface Video {
     channel: Channel;
 }
 
-const props = defineProps<{ video: Video }>();
+const props = defineProps<{
+    video: Video;
+    /** Unsubscribe mode: a click selects the channel instead of opening. */
+    selectable?: boolean;
+    selected?: boolean;
+}>();
 
 const videoUrl = computed(
     () => `https://www.youtube.com/watch?v=${props.video.youtube_video_id}`,
 );
 
-defineEmits<{
+const age = computed(() => relativeAge(props.video.published_at));
+
+const emit = defineEmits<{
     (e: 'card-click', video: Video): void;
+    (e: 'select', video: Video): void;
     (e: 'context-menu', event: MouseEvent, video: Video): void;
     (e: 'toggle-watched', video: Video): void;
 }>();
+
+// A plain left click opens the video in a background tab so the app keeps
+// focus. Modified and middle clicks keep the browser's native behaviour.
+const onClick = (event: MouseEvent) => {
+    if (props.selectable) {
+        event.preventDefault();
+        emit('select', props.video);
+
+        return;
+    }
+
+    if (
+        event.button === 0 &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        !event.altKey
+    ) {
+        event.preventDefault();
+        openInBackgroundTab(videoUrl.value);
+    }
+
+    emit('card-click', props.video);
+};
 
 // Temporarily disabled: set back to true to restore the custom right-click menu
 // and let the native browser context menu go away again.
@@ -42,22 +78,31 @@ const CONTEXT_MENU_ENABLED = false;
 
 <template>
     <a
-        :href="videoUrl"
-        target="_blank"
-        rel="noopener"
-        class="group relative block cursor-pointer overflow-hidden rounded-[5px] border-2 bg-card transition-opacity"
-        :class="
+        :href="selectable ? undefined : videoUrl"
+        :target="selectable ? undefined : '_blank'"
+        :rel="selectable ? undefined : 'noopener'"
+        :role="selectable ? 'button' : undefined"
+        :tabindex="selectable ? 0 : undefined"
+        :aria-pressed="selectable ? selected : undefined"
+        class="group relative block overflow-hidden rounded-[5px] border-2 bg-card transition-opacity"
+        :class="[
+            selected
+                ? 'ring-[3px] ring-cherry ring-offset-2 ring-offset-background'
+                : '',
             video.channel_is_favorite
                 ? video.user_state === 'watched'
                     ? 'border-[#d4a824] opacity-40 hover:opacity-70'
                     : 'border-[#d4a824]'
                 : video.user_state === 'watched'
                   ? 'border-border opacity-40 hover:opacity-70'
-                  : 'border-border hover:border-foreground/30'
-        "
-        @click="$emit('card-click', video)"
+                  : 'border-border hover:border-foreground/30',
+        ]"
+        @click="onClick"
+        @keydown.enter.space.prevent="selectable && emit('select', video)"
         @contextmenu="
-            CONTEXT_MENU_ENABLED && $emit('context-menu', $event, video)
+            !selectable &&
+            CONTEXT_MENU_ENABLED &&
+            $emit('context-menu', $event, video)
         "
     >
         <!-- Thumbnail -->
@@ -70,9 +115,18 @@ const CONTEXT_MENU_ENABLED = false;
                 loading="lazy"
             />
             <!-- Watched toggle — top left -->
+            <!-- Selected badge (unsubscribe mode) -->
+            <div
+                v-if="selectable && selected"
+                class="pointer-events-none absolute top-2 left-2 z-10 rounded-full bg-cherry p-1 text-white shadow-md"
+                aria-hidden="true"
+            >
+                <CheckIconSolid class="size-4" />
+            </div>
             <button
+                v-if="!selectable"
                 type="button"
-                class="absolute top-2 left-2 z-10 rounded-full bg-black/55 p-1.5 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/75 focus-visible:opacity-100"
+                class="absolute top-2 left-2 z-10 rounded-full bg-black/55 p-1.5 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/75 focus-visible:opacity-100 pointer-coarse:p-2 pointer-coarse:opacity-100"
                 :class="{ 'opacity-100': video.user_state === 'watched' }"
                 :title="
                     video.user_state === 'watched'
@@ -122,9 +176,30 @@ const CONTEXT_MENU_ENABLED = false;
                 >
                     {{ video.channel.name[0] }}
                 </span>
-                <span class="truncate text-[11px] text-muted-foreground">
+                <span
+                    class="min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
+                >
                     {{ video.channel.name }}
                 </span>
+                <time
+                    v-if="age"
+                    :datetime="video.published_at"
+                    :title="new Date(video.published_at).toLocaleString()"
+                    class="shrink-0 text-[11px] text-muted-foreground"
+                >
+                    {{ age }}
+                </time>
+                <!-- Card menu: always shown on touch, hover-only with a mouse -->
+                <button
+                    v-if="!selectable"
+                    type="button"
+                    class="-my-1 -mr-1 flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 pointer-coarse:-my-2 pointer-coarse:size-9 pointer-coarse:opacity-100"
+                    aria-label="Video actions"
+                    aria-haspopup="menu"
+                    @click.prevent.stop="$emit('context-menu', $event, video)"
+                >
+                    <EllipsisHorizontalIcon class="size-5" />
+                </button>
             </div>
         </div>
     </a>

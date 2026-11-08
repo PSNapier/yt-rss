@@ -3,14 +3,38 @@ import {
     EyeIcon,
     EyeSlashIcon,
     FunnelIcon,
+    UserMinusIcon,
+    StarIcon,
     WrenchIcon,
 } from '@heroicons/vue/24/outline';
-import { Deferred, Head, router, usePage } from '@inertiajs/vue3';
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { Head, router, usePage } from '@inertiajs/vue3';
+import {
+    computed,
+    nextTick,
+    onMounted,
+    onUnmounted,
+    reactive,
+    ref,
+    watch,
+} from 'vue';
 import FeedGridSkeleton from '@/components/FeedGridSkeleton.vue';
+import FeedStatsCard from '@/components/FeedStatsCard.vue';
+import type { FeedStats } from '@/components/FeedStatsCard.vue';
+import HeroToggleButton from '@/components/HeroToggleButton.vue';
+import UnsubscribeActionBar from '@/components/UnsubscribeActionBar.vue';
+import UnsubscribeConfirmDialog from '@/components/UnsubscribeConfirmDialog.vue';
 import VideoCard from '@/components/VideoCard.vue';
 import { getFeedCache, saveFeedCache } from '@/composables/useFeedCache';
+import { postFeedPreferences } from '@/composables/useFeedPreferences';
+import {
+    beginFeedScroll,
+    endFeedScroll,
+    onFeedScroll,
+} from '@/composables/useFeedScroll';
+import { useUnsubscribeMode } from '@/composables/useUnsubscribeMode';
+import type { ChannelGroupMap } from '@/composables/useUnsubscribeMode';
 import { postVideoState } from '@/composables/useVideoState';
+import { heroGradient, resolveGroupColor } from '@/lib/groupColors';
 import { resolveGroupIcon } from '@/lib/groupIcons';
 import feed from '@/routes/feed';
 import subscriptions from '@/routes/subscriptions';
@@ -41,9 +65,18 @@ interface CursorPaginator<T> {
 }
 
 const props = defineProps<{
-    group: { id: number; name: string; icon: string | null };
+    group: {
+        id: number;
+        name: string;
+        icon: string | null;
+        color: string | null;
+    };
     videos?: CursorPaginator<Video>;
+    stats?: FeedStats;
     capEnabled?: boolean;
+    channelGroupMap?: ChannelGroupMap;
+    showWatched?: boolean;
+    starredOnly?: boolean;
 }>();
 
 defineOptions({});
@@ -51,10 +84,12 @@ defineOptions({});
 const items = reactive<Video[]>([]);
 const nextUrl = ref<string | null>(null);
 const loadingMore = ref(false);
-const showWatched = ref(true);
+const showWatched = ref(props.showWatched ?? true);
+const starredOnly = ref(props.starredOnly ?? false);
 const olderExpanded = ref(false);
 const capOn = ref(props.capEnabled ?? false);
 
+const MIN_VISIBLE = 15;
 const cacheKey = computed(() => `group:${props.group.id}`);
 const loadedKey = ref<string | null>(null);
 // True once the current feed was restored from cache, so the deferred
@@ -73,6 +108,7 @@ watch(
     cacheKey,
     (key) => {
         loadedKey.value = key;
+        beginFeedScroll(key, nextTick);
         const cached = getFeedCache<Video>(key);
 
         if (cached) {
@@ -138,8 +174,10 @@ const closeCtx = () => {
 
 const openCtx = (event: MouseEvent, video: Video) => {
     event.preventDefault();
-    ctx.x = event.clientX;
-    ctx.y = event.clientY;
+    // Keep the menu on screen when opened near an edge. The card's actions
+    // button sits at its right edge, so on a phone the menu would spill off.
+    ctx.x = Math.max(8, Math.min(event.clientX, window.innerWidth - 176));
+    ctx.y = Math.max(8, Math.min(event.clientY, window.innerHeight - 136));
     ctx.videoId = video.youtube_video_id;
     ctx.open = true;
 };
@@ -192,6 +230,21 @@ const toggleCap = () => {
     );
 };
 
+// Persist a display toggle without an Inertia visit (see useFeedPreferences).
+const toggleShowWatched = () => {
+    showWatched.value = !showWatched.value;
+    postFeedPreferences(feed.preferences().url, {
+        show_watched: showWatched.value,
+    });
+};
+
+const toggleStarredOnly = () => {
+    starredOnly.value = !starredOnly.value;
+    postFeedPreferences(feed.preferences().url, {
+        starred_only: starredOnly.value,
+    });
+};
+
 // Eye toggle on the card: flip watched <-> unwatched without opening the video.
 const onToggleWatched = (video: Video) => {
     setState(
@@ -199,6 +252,31 @@ const onToggleWatched = (video: Video) => {
         video.user_state === 'watched' ? null : 'watched',
     );
 };
+
+// Unsubscribe-select mode: a card click selects its channel for removal.
+const {
+    active: unsubActive,
+    count: unsubCount,
+    selectedChannels: unsubChannels,
+    dialogOpen: unsubDialogOpen,
+    processing: unsubProcessing,
+    toggleMode: toggleUnsubMode,
+    exit: exitUnsubMode,
+    clear: clearUnsub,
+    isSelected: isChannelSelected,
+    toggleChannel: toggleUnsubChannel,
+    deselect: deselectUnsubChannel,
+    openDialog: openUnsubDialog,
+    confirm: confirmUnsub,
+} = useUnsubscribeMode({
+    groupId: () => props.group.id,
+    channelGroups: () => props.channelGroupMap,
+    onRemoved: (channelIds) => {
+        const gone = new Set(channelIds);
+        const kept = items.filter((v) => !gone.has(v.channel.id));
+        items.splice(0, items.length, ...kept);
+    },
+});
 
 const onCardClick = (video: Video) => {
     if (video.user_state !== 'watched') {
@@ -208,9 +286,9 @@ const onCardClick = (video: Video) => {
 
 const page = usePage();
 
-const loadMore = async () => {
+const loadMore = async (): Promise<boolean> => {
     if (loadingMore.value || !nextUrl.value) {
-        return;
+        return false;
     }
 
     loadingMore.value = true;
@@ -227,29 +305,34 @@ const loadMore = async () => {
         });
 
         if (!res.ok) {
-            return;
+            return false;
         }
 
         const json = await res.json();
         const data = json?.props?.videos as CursorPaginator<Video> | undefined;
 
         if (!data) {
-            return;
+            return false;
         }
 
         items.push(...data.data);
         nextUrl.value = data.next_page_url;
+
+        return true;
     } finally {
         loadingMore.value = false;
     }
 };
 
 onMounted(() => {
+    window.addEventListener('scroll', onFeedScroll, { passive: true });
     document.addEventListener('click', closeCtx);
     document.addEventListener('scroll', closeCtx, { passive: true });
 });
 
 onUnmounted(() => {
+    endFeedScroll();
+    window.removeEventListener('scroll', onFeedScroll);
     document.removeEventListener('click', closeCtx);
     document.removeEventListener('scroll', closeCtx);
 });
@@ -268,9 +351,11 @@ const buckets = computed(() => {
     const yesterday = startOfDay(2);
     const weekStart = startOfDay(7);
 
-    const visible = showWatched.value
-        ? items
-        : items.filter((v) => v.user_state !== 'watched');
+    const visible = items.filter(
+        (v) =>
+            (showWatched.value || v.user_state !== 'watched') &&
+            (!starredOnly.value || v.channel_is_favorite),
+    );
 
     const sections = [
         { id: 'today', label: 'Today', items: [] as Video[] },
@@ -302,11 +387,19 @@ const olderBucket = computed(
 const recentBuckets = computed(() =>
     buckets.value.filter((b) => b.id !== 'older'),
 );
+const recentCount = computed(() =>
+    recentBuckets.value.reduce((sum, b) => sum + b.items.length, 0),
+);
+// Older videos stay collapsed only when the recent buckets already fill
+// MIN_VISIBLE, so a sparse recent feed still shows its first 15 cards.
+const olderShown = computed(
+    () => olderExpanded.value || recentCount.value < MIN_VISIBLE,
+);
 const displayBuckets = computed(() => {
     const recent = recentBuckets.value;
     const older = olderBucket.value;
 
-    if (!older || !olderExpanded.value) {
+    if (!older || !olderShown.value) {
         return recent;
     }
 
@@ -315,12 +408,12 @@ const displayBuckets = computed(() => {
 
 const showLoadMoreButton = computed(
     () =>
-        (olderBucket.value !== null && !olderExpanded.value) ||
+        (olderBucket.value !== null && !olderShown.value) ||
         nextUrl.value !== null,
 );
 
 const loadMoreLabel = computed(() => {
-    if (olderBucket.value && !olderExpanded.value) {
+    if (olderBucket.value && !olderShown.value) {
         const count = olderBucket.value.items.length;
 
         return `Show older videos (${count})`;
@@ -329,8 +422,34 @@ const loadMoreLabel = computed(() => {
     return loadingMore.value ? 'Loading…' : 'Load more';
 });
 
+// Keep pulling pages until MIN_VISIBLE cards show (after the watched/starred
+// filters) or the cursor ends. A failed request stops the loop.
+const visibleCount = computed(() =>
+    displayBuckets.value.reduce((sum, b) => sum + b.items.length, 0),
+);
+const autoFillFailed = ref(false);
+
+watch(
+    [visibleCount, nextUrl, loadingMore],
+    async () => {
+        if (
+            autoFillFailed.value ||
+            loadingMore.value ||
+            !nextUrl.value ||
+            visibleCount.value >= MIN_VISIBLE
+        ) {
+            return;
+        }
+
+        if (!(await loadMore())) {
+            autoFillFailed.value = true;
+        }
+    },
+    { immediate: true },
+);
+
 const onLoadMoreClick = () => {
-    if (olderBucket.value && !olderExpanded.value) {
+    if (olderBucket.value && !olderShown.value) {
         olderExpanded.value = true;
 
         return;
@@ -349,153 +468,98 @@ const onLoadMoreClick = () => {
             <div class="flex flex-col">
                 <!-- Hero banner -->
                 <div
-                    class="flex items-end gap-[22px] rounded-t-xl rounded-b-none p-[26px_28px] text-white"
-                    style="
-                        background: linear-gradient(
-                            180deg,
-                            var(--cherry) 0%,
-                            var(--cherry-deep) 100%
-                        );
-                    "
+                    class="flex flex-wrap items-end gap-x-3.5 gap-y-4 rounded-t-xl rounded-b-none p-[18px] text-white md:flex-nowrap md:gap-[22px] md:p-[26px_28px]"
+                    :style="{ background: heroGradient(group.color) }"
                 >
                     <!-- Group icon tile -->
                     <div
-                        class="flex size-[92px] shrink-0 items-center justify-center rounded-xl bg-white"
-                        style="color: var(--cherry)"
+                        class="flex size-14 shrink-0 items-center justify-center rounded-xl bg-white md:size-[92px]"
+                        :style="{
+                            color:
+                                resolveGroupColor(group.color)?.top ??
+                                'var(--cherry)',
+                        }"
                     >
                         <component
                             :is="resolveGroupIcon(group.icon, group.name)"
-                            class="size-11"
+                            class="size-8 md:size-11"
                         />
                     </div>
 
                     <div class="min-w-0 flex-1">
                         <p
-                            class="mb-[7px] text-[12px] font-bold tracking-[0.16em] text-white/70 uppercase"
+                            class="mb-1 text-[11px] font-bold tracking-[0.16em] text-white/70 uppercase md:mb-[7px] md:text-[12px]"
                         >
                             Group
                         </p>
                         <h1
-                            class="text-[40px] leading-none font-bold tracking-[-0.03em] text-white"
+                            class="truncate text-[26px] leading-[1.15] font-bold tracking-[-0.03em] text-white md:text-[40px]"
                         >
                             {{ group.name }}
                         </h1>
                     </div>
 
-                    <div class="flex items-center gap-[10px]">
-                        <!-- Latest-unwatched-per-channel cap toggle -->
-                        <button
-                            type="button"
-                            :class="[
-                                'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
+                    <div class="flex w-full shrink-0 items-center gap-[10px] md:w-auto">
+                        <HeroToggleButton
+                            :icon="UserMinusIcon"
+                            :pressed="unsubActive"
+                            :tooltip="
+                                unsubActive
+                                    ? 'Unsubscribe mode on. Click to turn it off'
+                                    : 'Unsubscribe mode. Click videos to select channels to remove'
+                            "
+                            @click="toggleUnsubMode"
+                        />
+                        <HeroToggleButton
+                            :icon="FunnelIcon"
+                            :pressed="capOn"
+                            :tooltip="
                                 capOn
-                                    ? 'bg-white'
-                                    : 'bg-white/10 text-white/90 hover:text-white',
-                            ]"
-                            :style="capOn ? 'color: var(--cherry)' : ''"
-                            :aria-pressed="capOn"
-                            :title="
-                                capOn
-                                    ? 'Showing latest unwatched video per channel'
-                                    : 'Showing all videos'
+                                    ? 'Showing latest unwatched video per channel. Click to show all videos'
+                                    : 'Showing all videos. Click to show only the latest unwatched per channel'
                             "
                             @click="toggleCap"
-                        >
-                            <FunnelIcon class="size-[15px]" />
-                            <span>{{
-                                capOn ? 'Latest only' : 'All videos'
-                            }}</span>
-                        </button>
-
-                        <!-- Show/hide watched toggle -->
-                        <button
-                            type="button"
-                            :class="[
-                                'flex items-center gap-2 rounded-[4px] border border-white/40 p-[6px_10px] text-[13px] font-medium transition-colors',
-                                showWatched
-                                    ? 'bg-white'
-                                    : 'bg-white/10 text-white/90 hover:text-white',
-                            ]"
-                            :style="showWatched ? 'color: var(--cherry)' : ''"
-                            :aria-pressed="showWatched"
-                            :title="
-                                showWatched
-                                    ? 'Watched videos visible (greyed)'
-                                    : 'Hide watched videos'
+                        />
+                        <HeroToggleButton
+                            :icon="StarIcon"
+                            :pressed="starredOnly"
+                            :tooltip="
+                                starredOnly
+                                    ? 'Showing starred channels only. Click to show all channels'
+                                    : 'Showing all channels. Click to show starred channels only'
                             "
-                            @click="showWatched = !showWatched"
-                        >
-                            <component
-                                :is="showWatched ? EyeIcon : EyeSlashIcon"
-                                class="size-[15px]"
-                            />
-                            <span>{{
+                            @click="toggleStarredOnly"
+                        />
+                        <HeroToggleButton
+                            :icon="showWatched ? EyeIcon : EyeSlashIcon"
+                            :pressed="showWatched"
+                            :tooltip="
                                 showWatched
-                                    ? 'Showing watched'
-                                    : 'Hiding watched'
-                            }}</span>
-                        </button>
-
-                        <a
+                                    ? 'Watched videos visible (greyed). Click to hide them'
+                                    : 'Watched videos hidden. Click to show them'
+                            "
+                            @click="toggleShowWatched"
+                        />
+                        <HeroToggleButton
+                            :icon="WrenchIcon"
+                            tooltip="Manage channels"
                             :href="`${subscriptions.index().url}#subscription-group-${group.id}`"
-                            data-inertia-link="false"
-                            class="flex items-center gap-2 rounded-[4px] border border-white/40 bg-white/10 p-[6px_10px] text-[13px] font-medium text-white/90 transition-colors hover:text-white"
-                        >
-                            <WrenchIcon class="size-[15px]" />
-                            Manage channels
-                        </a>
+                        />
                     </div>
                 </div>
 
-                <!-- Stats card -->
-                <div
-                    class="flex overflow-hidden rounded-t-none rounded-b-xl border border-t-0 border-border bg-card"
-                >
-                    <div
-                        class="flex flex-1 flex-col gap-[10px] border-r border-border px-[22px] py-[18px]"
-                    >
-                        <span
-                            class="text-[12px] font-bold tracking-[0.12em] text-muted-foreground/70 uppercase"
-                            >Channels</span
-                        >
-                        <span
-                            class="text-[22px] font-semibold tracking-[-0.01em] text-foreground"
-                            >—</span
-                        >
-                    </div>
-                    <div
-                        class="flex flex-1 flex-col gap-[10px] border-r border-border px-[22px] py-[18px]"
-                    >
-                        <span
-                            class="text-[12px] font-bold tracking-[0.12em] text-muted-foreground/70 uppercase"
-                            >Starred</span
-                        >
-                        <span
-                            class="text-[22px] font-semibold tracking-[-0.01em] text-foreground"
-                            >—</span
-                        >
-                    </div>
-                    <div
-                        class="flex flex-1 flex-col gap-[10px] px-[22px] py-[18px]"
-                    >
-                        <span
-                            class="text-[12px] font-bold tracking-[0.12em] text-muted-foreground/70 uppercase"
-                            >Last sync</span
-                        >
-                        <span
-                            class="text-[22px] font-semibold tracking-[-0.01em] text-foreground"
-                            >—</span
-                        >
-                    </div>
-                </div>
+                <FeedStatsCard :stats="props.stats" />
             </div>
             <!-- /Hero + stats -->
 
-            <Deferred data="videos">
-                <template #fallback>
-                    <FeedGridSkeleton :count="8" />
-                </template>
+            <!-- Skeleton only while nothing is loaded or cached. Cached cards
+                 render immediately and the deferred payload reconciles quietly. -->
+            <FeedGridSkeleton
+                v-if="items.length === 0 && !props.videos"
+                :count="8"
+            />
 
+            <template v-else>
                 <!-- Empty state -->
                 <div
                     v-if="items.length === 0"
@@ -546,6 +610,11 @@ const onLoadMoreClick = () => {
                                 v-for="video in bucket.items"
                                 :key="video.youtube_video_id"
                                 :video="video"
+                                :selectable="unsubActive"
+                                :selected="isChannelSelected(video.channel.id)"
+                                @select="
+                                    (v: Video) => toggleUnsubChannel(v.channel)
+                                "
                                 @card-click="onCardClick"
                                 @toggle-watched="onToggleWatched"
                                 @context-menu="openCtx"
@@ -553,7 +622,7 @@ const onLoadMoreClick = () => {
                         </div>
                     </section>
                 </template>
-            </Deferred>
+            </template>
 
             <FeedGridSkeleton v-if="loadingMore" :count="4" class="mt-4" />
 
@@ -576,7 +645,7 @@ const onLoadMoreClick = () => {
                 @click.stop
             >
                 <button
-                    class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                    class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm pointer-coarse:py-2.5 hover:bg-accent"
                     @click="
                         setState(ctx.videoId!, 'watched');
                         closeCtx();
@@ -585,7 +654,7 @@ const onLoadMoreClick = () => {
                     Mark watched
                 </button>
                 <button
-                    class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                    class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm pointer-coarse:py-2.5 hover:bg-accent"
                     @click="
                         setState(ctx.videoId!, null);
                         closeCtx();
@@ -594,7 +663,7 @@ const onLoadMoreClick = () => {
                     Mark unwatched
                 </button>
                 <button
-                    class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
+                    class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm pointer-coarse:py-2.5 text-destructive hover:bg-accent"
                     @click="
                         setState(ctx.videoId!, 'hidden');
                         closeCtx();
@@ -603,6 +672,23 @@ const onLoadMoreClick = () => {
                     Hide
                 </button>
             </div>
+            <UnsubscribeActionBar
+                v-if="unsubActive"
+                :count="unsubCount"
+                @clear="clearUnsub"
+                @remove="openUnsubDialog"
+                @exit="exitUnsubMode"
+            />
+
+            <UnsubscribeConfirmDialog
+                v-model:open="unsubDialogOpen"
+                :channels="unsubChannels"
+                :channel-groups="props.channelGroupMap"
+                :group="{ id: group.id, name: group.name }"
+                :processing="unsubProcessing"
+                @deselect="deselectUnsubChannel"
+                @confirm="confirmUnsub"
+            />
         </div>
     </div>
 </template>

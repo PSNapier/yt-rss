@@ -301,7 +301,7 @@ class RssFetcher
     protected function pollHeaders(Channel $channel): array
     {
         $headers = [
-            'User-Agent' => (string) config('services.websub.user_agent'),
+            'User-Agent' => (string) config('services.polling.user_agent'),
             'Accept-Encoding' => 'gzip, deflate',
             'Accept' => 'application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8',
         ];
