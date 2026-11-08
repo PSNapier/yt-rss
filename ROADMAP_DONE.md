@@ -1,5 +1,103 @@
 # Roadmap Done
 
+## [020] Keep users logged in for 90 days
+
+**Status:** `done`
+**Depends On:** none
+
+### Goal
+
+Logged-in users stay authenticated for up to 90 days instead of the current default session window.
+
+### Scope
+
+- Extend the effective login duration to 90 days
+
+### Technical Notes
+
+- `config/session.php:35` sets `'lifetime' => (int) env('SESSION_LIFETIME', 120)` (minutes) — 120 min today
+- **Approach: long session lifetime.** Set `SESSION_LIFETIME=129600` (90 days). Confirmed low-risk: driver is `database` (`config/session.php:21`), `expire_on_close` is already `false` (`:37`), and GC deletes rows only past `lifetime` — so a 90-day lifetime keeps sessions the full 90 days. Pure config change, no remember-me cookie needed
+- Set it in `.env` (and `.env.example`); confirm the default in `config/session.php` if a fallback matters
+- Built: the `config/session.php` fallback default is also 129600. Verified in the browser that the `laravel-session` cookie expires 90.0 days after login
+
+### Acceptance Criteria
+
+- [x] A logged-in user remains authenticated after being idle well beyond the old 120-minute window
+      `tests/Feature/SessionLifetimeTest.php::it keeps a user authenticated after idling past two hours`
+- [x] `SESSION_LIFETIME` is set to 129600 in `.env` / `.env.example`
+      `tests/Feature/SessionLifetimeTest.php::it sets session lifetime to ninety days in env example`
+- [x] Sessions still expire at ~90 days, not indefinitely
+      `tests/Feature/SessionLifetimeTest.php::it expires sessions after ninety days`
+
+---
+
+## [034] Pace the sweep: concurrency, spacing, then timeouts
+
+**Status:** `next`
+**Depends On:** [032], [033]
+
+### Goal
+
+Stop the sweep from being throttled by its own request pattern. [032] proved on production that single requests succeed comfortably on the current 2.0s/3.0s budget, that one batch of 20 concurrent already loses a request to a silent timeout, and that all 193 channels fetched sequentially with a 150ms gap never fail at all. The sweep fires ten back-to-back pools of 20 with no pacing, and `fetched` on the three real sweeps reads 15, 3, and 1 against a chunk size of 20. Roughly the first chunk gets through and the rest is answered with silence.
+
+### Scope
+
+- Lower the pool chunk from 20 and put a deliberate gap between chunks, both configurable
+- Raise the connect and total timeouts, configurable, as margin behind the pacing rather than as the fix
+- Re-measure with `poll:diagnose` on production and confirm a full sweep lands near zero failures
+- Accept a slower sweep. 193 channels paced sequentially took minutes and lost nothing, against 25 seconds that lost 92%
+- **Not in scope:** retry logic. Fix the request pattern first and see what is left
+
+### Technical Notes
+
+`RSS_POOL_CHUNK` (20) is read in `AppServiceProvider` (`app/Providers/AppServiceProvider.php:19-22`); the timeouts are not passed at all, so the constructor defaults at `app/Services/RssFetcher.php:18-23` are the only values that have ever run. There is no inter-chunk delay anywhere in `fetchForChannels`.
+
+The failure signature is `cURL error 28: Operation timed out after 3002 milliseconds with **0 bytes received**`. Not a slow body, not a 403, not a 429: an accepted connection answered with nothing. That is why `blockSignal` reads zero through a 97%-failure sweep, and it is the reason a larger timeout on its own only buys a longer wait for the same silence.
+
+Order of attack, cheapest first: chunk size, then inter-chunk gap, then timeouts. Measure after each rather than changing all three and inferring.
+
+The endpoint has no published rate limit, so the working ceiling is whatever production measurement shows. `reference/YOUTUBE_RSS_RATE_LIMITS.md` sections 5 and 7 are the background, and [031] is where a measured ceiling belongs long-term.
+
+```mermaid
+flowchart LR
+    A[193 channels] --> B[10 pools of 20, no gap]
+    B --> C[First chunk succeeds]
+    C --> D[Silence: 0 bytes, timeout at 3s]
+    A --> E[Smaller chunks, gap between]
+    E --> F[Measure with poll:diagnose]
+```
+
+**Shipped.** `RssFetcher::forSweep()` returns a copy on the sweep budget, and `channels:poll` is the only caller: a feed load keeps the impatient request-path budget, since a user is waiting on it. Defaults, all env-overridable:
+
+| Setting | Request path | Sweep |
+| --- | --- | --- |
+| Pool chunk | `RSS_POOL_CHUNK` 20 | `POLL_POOL_CHUNK` 5 |
+| Gap between batches | none | `POLL_INTER_CHUNK_DELAY_MS` 500 |
+| Connect timeout | `RSS_CONNECT_TIMEOUT` 2.0 | `POLL_CONNECT_TIMEOUT` 5.0 |
+| Total timeout | `RSS_TIMEOUT` 3.0 | `POLL_TIMEOUT` 10.0 |
+
+At 193 channels that is 39 batches and roughly 19 seconds of deliberate pausing on top of request time, against the 25-second sweep that lost 92%. The gap is taken before each batch after the first, never after the last, and uses `Illuminate\Support\Sleep` so tests assert the pacing without waiting for it.
+
+`poll:diagnose` now reads the sweep budget from config rather than the copied `TIGHT = [2.0, 3.0]` constant, and `--pool` defaults to the configured chunk, so the diagnosis measures whatever the sweep is actually set to.
+
+**Still unverified:** the two production criteria below. Deploy, then run `poll:diagnose` and read `poll_sweeps` over consecutive real sweeps.
+
+### Acceptance Criteria
+
+- [x] Pool chunk size and an inter-chunk delay are configurable, and the sweep uses them
+- [x] Connect and total timeouts come from config, with the sweep and the request path able to differ
+- [ ] `poll:diagnose` run on production after the change shows a full sweep completing with failures near zero
+- [ ] `poll_sweeps` shows `fetched` well past a single chunk's worth on consecutive real sweeps
+- [ ] If pacing does not fix it, the reading is recorded in `reference/POLLING_LOSS_INVESTIGATION.md` and this item is re-scoped rather than closed
+
+### Tests
+
+- [x] `tests/Feature/RssFetcherTest.php` - the configured chunk size determines the pool batches
+- [x] `tests/Feature/RssFetcherTest.php` - configured timeouts reach the outbound request
+- [x] `tests/Feature/ChannelsPollCommandTest.php` - the sweep uses the sweep budget, not the request-path budget
+
+---
+
 ## [038] Hide groups and the Shorts page
 
 **Status:** `done`

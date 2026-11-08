@@ -1,10 +1,10 @@
 # Roadmap
 
-<!-- Next task number: [039] -->
+<!-- Next task number: [040] -->
 
 ## [006] Stop feed reverting to skeleton + scroll reset on tab return
 
-**Status:** `todo`
+**Status:** `next`
 **Depends On:** none
 
 ### Goal
@@ -37,7 +37,7 @@ Returning to a feed shows the already-loaded cards immediately, keeping scroll p
 
 ## [007] Open watched video in a background tab (Brave)
 
-**Status:** `todo`
+**Status:** `next`
 **Depends On:** none
 
 ### Goal
@@ -65,7 +65,7 @@ Clicking a video card opens the YouTube tab in the background so focus stays on 
 
 ## [008] Persist show/hide-watched state across feeds
 
-**Status:** `todo`
+**Status:** `next`
 **Depends On:** none
 
 ### Goal
@@ -94,7 +94,7 @@ The show-watched / hide-watched toggle keeps its setting when moving between gro
 
 ## [009] Unify sidebar button highlighting (Cherry accent border)
 
-**Status:** `todo`
+**Status:** `next`
 **Depends On:** none
 
 ### Goal
@@ -123,7 +123,7 @@ Both sidebar sections (main nav and group feeds) use the same active-state highl
 
 ## [010] Guarantee first 15 videos without Load more
 
-**Status:** `todo`
+**Status:** `next`
 **Depends On:** [006]
 
 ### Goal
@@ -153,7 +153,7 @@ Each feed shows at least 15 videos on first load regardless of how they fall acr
 
 ## [012] Replace subscription card Remove text with trash icon
 
-**Status:** `todo`
+**Status:** `next`
 **Depends On:** none
 
 ### Goal
@@ -180,7 +180,7 @@ The per-subscription Remove control is a trash-can icon button instead of the wo
 
 ## [013] Always show the channel ID input in Add form
 
-**Status:** `todo`
+**Status:** `next`
 **Depends On:** none
 
 ### Goal
@@ -207,7 +207,7 @@ The "Add by channel ID" input is always visible in the Add-to-groups section, no
 
 ## [014] Single/multi group-select toggle in Add form
 
-**Status:** `todo`
+**Status:** `next`
 **Depends On:** none
 
 ### Goal
@@ -235,7 +235,7 @@ An icon-button toggle beside "Add to groups" switches between multi-select (curr
 
 ## [015] Swap TikTok hero icon for a film camera icon
 
-**Status:** `todo`
+**Status:** `next`
 **Depends On:** none
 
 ### Goal
@@ -261,7 +261,7 @@ The All Videos feed hero shows a film/video camera icon instead of the TikTok no
 
 ## [016] Edit group icon from group management
 
-**Status:** `todo`
+**Status:** `next`
 **Depends On:** [011]
 
 ### Goal
@@ -291,7 +291,7 @@ A group's icon can be changed from the group-management section, choosing from t
 
 ## [017] Group color: sidebar icon + feed hero background
 
-**Status:** `todo`
+**Status:** `next`
 **Depends On:** [016]
 
 ### Goal
@@ -322,7 +322,7 @@ Each group can be assigned a color that drives its sidebar icon color and the fe
 
 ## [018] Show publish date on video cards
 
-**Status:** `todo`
+**Status:** `next`
 **Depends On:** none
 
 ### Goal
@@ -350,7 +350,7 @@ Each video card shows its publish date floated to the right of the channel row, 
 
 ## [019] Starred-only toggle on feeds (persisted)
 
-**Status:** `todo`
+**Status:** `next`
 **Depends On:** none
 
 ### Goal
@@ -377,36 +377,9 @@ A "show favorited only" toggle on the feed pages filters cards to favorited chan
 
 ---
 
-## [020] Keep users logged in for 90 days
-
-**Status:** `todo`
-**Depends On:** none
-
-### Goal
-
-Logged-in users stay authenticated for up to 90 days instead of the current default session window.
-
-### Scope
-
-- Extend the effective login duration to 90 days
-
-### Technical Notes
-
-- `config/session.php:35` sets `'lifetime' => (int) env('SESSION_LIFETIME', 120)` (minutes) — 120 min today
-- **Approach: long session lifetime.** Set `SESSION_LIFETIME=129600` (90 days). Confirmed low-risk: driver is `database` (`config/session.php:21`), `expire_on_close` is already `false` (`:37`), and GC deletes rows only past `lifetime` — so a 90-day lifetime keeps sessions the full 90 days. Pure config change, no remember-me cookie needed
-- Set it in `.env` (and `.env.example`); confirm the default in `config/session.php` if a fallback matters
-
-### Acceptance Criteria
-
-- [ ] A logged-in user remains authenticated after being idle well beyond the old 120-minute window
-- [ ] `SESSION_LIFETIME` is set to 129600 in `.env` / `.env.example`
-- [ ] Sessions still expire at ~90 days, not indefinitely
-
----
-
 ## [030] Remove WebSub entirely
 
-**Status:** `todo`
+**Status:** `next`
 **Depends On:** [029]
 
 ### Goal
@@ -555,70 +528,71 @@ The audit is the constraint, not the quota: reported waits run from weeks to sev
 
 ---
 
-## [034] Pace the sweep: concurrency, spacing, then timeouts
+## [039] Mobile audit: top bar, drop-down nav drawer, touch-friendly feeds
 
 **Status:** `next`
-**Mode:** `Auto`
-**Depends On:** [032], [033]
+**Depends On:** [009], [012], [015], [017], [018]
+**Spec:** none
 
 ### Goal
 
-Stop the sweep from being throttled by its own request pattern. [032] proved on production that single requests succeed comfortably on the current 2.0s/3.0s budget, that one batch of 20 concurrent already loses a request to a silent timeout, and that all 193 channels fetched sequentially with a 150ms gap never fail at all. The sweep fires ten back-to-back pools of 20 with no pacing, and `fetched` on the three real sweeps reads 15, 3, and 1 against a chunk size of 20. Roughly the first chunk gets through and the rest is answered with silence.
+Below 768px, every page is fully usable on a phone held one-handed. A plain, non-sticky top bar carries the logo and site name on the left and a hamburger on the right. Tapping it drops down a drawer with every nav option as simple right-aligned text, close to the thumb. Feed cards expose their actions without hover or right-click. Built after the visual items it depends on so nothing gets restyled twice.
 
 ### Scope
 
-- Lower the pool chunk from 20 and put a deliberate gap between chunks, both configurable
-- Raise the connect and total timeouts, configurable, as margin behind the pacing rather than as the fix
-- Re-measure with `poll:diagnose` on production and confirm a full sweep lands near zero failures
-- Accept a slower sweep. 193 channels paced sequentially took minutes and lost nothing, against 25 seconds that lost 92%
-- **Not in scope:** retry logic. Fix the request pattern first and see what is left
+- Mobile top bar (below 768px only): logo + "Peristalsis" left, linked to the landing page, hamburger right. Scrolls away with the page, never sticky or fixed
+- Drop-down drawer that expands down from the top bar. Reuses the existing nav (main nav, group feeds, user menu) restyled as right-aligned plain text, not a separate mobile-only menu
+- Drawer closes three ways: the hamburger turns into an X, tapping outside, and picking a link
+- Card actions on touch: watched toggle always visible, plus a small ⋯ button that opens the existing Mark watched / Mark unwatched / Hide menu
+- Feed hero on mobile: smaller icon and title, filter buttons drop to their own row underneath
+- Audit every page at phone width and fix overflow, cramped tap targets, and clipped controls: feeds, group feeds, Shorts, Subscriptions, Home, settings, and auth (login, register, password reset, 2FA, verify email)
+- Install Pest browser testing and add phone-viewport browser tests
+- NOT in scope: desktop and tablet (768px and up) layout, the sticky feed date headers (they stay sticky), reduced-motion handling, a long-press gesture
 
 ### Technical Notes
 
-`RSS_POOL_CHUNK` (20) is read in `AppServiceProvider` (`app/Providers/AppServiceProvider.php:19-22`); the timeouts are not passed at all, so the constructor defaults at `app/Services/RssFetcher.php:18-23` are the only values that have ever run. There is no inter-chunk delay anywhere in `fetchForChannels`.
+**User flows:**
 
-The failure signature is `cURL error 28: Operation timed out after 3002 milliseconds with **0 bytes received**`. Not a slow body, not a 403, not a 429: an accepted connection answered with nothing. That is why `blockSignal` reads zero through a 97%-failure sweep, and it is the reason a larger timeout on its own only buys a longer wait for the same silence.
+- **User (phone):** Top bar on any signed-in page. Tap the hamburger to drop down the nav, tap "All Videos", "Shorts", "Subscriptions", a group, or the account menu to go there. The drawer closes on navigation, on tap outside, or on the X.
+- **User (phone):** Video card on `/feed` or a group feed. Tap the watched toggle, or tap ⋯ to Mark watched, Mark unwatched, or Hide.
+- **Visitor (phone):** `/login`, `/register`, and the other auth screens. Fill in and submit forms without horizontal scrolling or clipped buttons.
 
-Order of attack, cheapest first: chunk size, then inter-chunk gap, then timeouts. Measure after each rather than changing all three and inferring.
+**Critical files:**
 
-The endpoint has no published rate limit, so the working ceiling is whatever production measurement shows. `reference/YOUTUBE_RSS_RATE_LIMITS.md` sections 5 and 7 are the background, and [031] is where a measured ceiling belongs long-term.
+- `resources/js/components/AppSidebar.vue` - modify. Its `SidebarTrigger` (line 65) is the only open control on mobile and lives inside the sheet it opens, so a closed sheet can never be reopened. This is the "can't reach options" bug.
+- `resources/js/layouts/app/AppSidebarLayout.vue` - modify. Mount the mobile top bar and drawer here, above the page slot.
+- `resources/js/components/ui/sidebar/SidebarProvider.vue` - entry point. `isMobile` is `(max-width: 768px)` (line 22). Reuse it for the breakpoint rather than adding a second query.
+- `resources/js/components/VideoCard.vue` - modify. The watched toggle is `opacity-0 group-hover:opacity-100` (line ~72) and the menu fires on `@contextmenu` only (line 59). iOS Safari never fires contextmenu on long-press.
+- `resources/js/pages/Videos/Feed.vue` - modify. Hero row at lines 289-327, card menu at 438-470. Mirror every change in `resources/js/pages/Groups/Show.vue` (menu wired at line 551).
 
-```mermaid
-flowchart LR
-    A[193 channels] --> B[10 pools of 20, no gap]
-    B --> C[First chunk succeeds]
-    C --> D[Silence: 0 bytes, timeout at 3s]
-    A --> E[Smaller chunks, gap between]
-    E --> F[Measure with poll:diagnose]
-```
+**Details:**
 
-**Shipped.** `RssFetcher::forSweep()` returns a copy on the sweep budget, and `channels:poll` is the only caller: a feed load keeps the impatient request-path budget, since a user is waiting on it. Defaults, all env-overridable:
-
-| Setting | Request path | Sweep |
-| --- | --- | --- |
-| Pool chunk | `RSS_POOL_CHUNK` 20 | `POLL_POOL_CHUNK` 5 |
-| Gap between batches | none | `POLL_INTER_CHUNK_DELAY_MS` 500 |
-| Connect timeout | `RSS_CONNECT_TIMEOUT` 2.0 | `POLL_CONNECT_TIMEOUT` 5.0 |
-| Total timeout | `RSS_TIMEOUT` 3.0 | `POLL_TIMEOUT` 10.0 |
-
-At 193 channels that is 39 batches and roughly 19 seconds of deliberate pausing on top of request time, against the 25-second sweep that lost 92%. The gap is taken before each batch after the first, never after the last, and uses `Illuminate\Support\Sleep` so tests assert the pacing without waiting for it.
-
-`poll:diagnose` now reads the sweep budget from config rather than the copied `TIGHT = [2.0, 3.0]` constant, and `--pool` defaults to the configured chunk, so the diagnosis measures whatever the sweep is actually set to.
-
-**Still unverified:** the two production criteria below. Deploy, then run `poll:diagnose` and read `poll_sweeps` over consecutive real sweeps.
+- Mobile nav today renders `Sidebar` as a `Sheet` (`ui/sidebar/Sidebar.vue:33`). The drop-down drawer replaces that sheet below 768px. Desktop keeps the current collapsible sidebar untouched
+- Drawer animates down from the bar. Don't add `motion-reduce:` or `prefers-reduced-motion` handling (global rule)
+- `NavMain`, `NavGroupFeeds`, `NavUser` feed the drawer content. They will already carry the [009] Cherry active border and [017] group colors by the time this is built. Right-align them in the drawer without forking them
+- `AppSidebarHeader` (breadcrumb header) only renders when breadcrumbs exist. Check it doesn't stack awkwardly under the new top bar
+- Touch detection for card actions: prefer CSS (`pointer-coarse:` / `@media (hover: none)`) over JS so the toggle and ⋯ button show on phones and stay hover-only on desktop
+- Pest browser testing isn't installed yet: no `pestphp/pest-plugin-browser` in `composer.json`, no `playwright` in `package.json`, no `tests/Browser/`. Add them as part of this item
+- Workflow: explore each page with `playwright-cli` at a phone viewport (e.g. 390x844), fix, then codify the flows as Pest browser tests. Record per-page audit findings and fixes in this section as they land
 
 ### Acceptance Criteria
 
-- [x] Pool chunk size and an inter-chunk delay are configurable, and the sweep uses them
-- [x] Connect and total timeouts come from config, with the sweep and the request path able to differ
-- [ ] `poll:diagnose` run on production after the change shows a full sweep completing with failures near zero
-- [ ] `poll_sweeps` shows `fetched` well past a single chunk's worth on consecutive real sweeps
-- [ ] If pacing does not fix it, the reading is recorded in `reference/POLLING_LOSS_INVESTIGATION.md` and this item is re-scoped rather than closed
-
-### Tests
-
-- [x] `tests/Feature/RssFetcherTest.php` - the configured chunk size determines the pool batches
-- [x] `tests/Feature/RssFetcherTest.php` - configured timeouts reach the outbound request
-- [x] `tests/Feature/ChannelsPollCommandTest.php` - the sweep uses the sweep budget, not the request-path budget
+- [ ] Below 768px a non-sticky top bar shows the logo + name on the left and a hamburger on the right. It scrolls away with the page
+      `tests/Browser/MobileNavTest.php::it shows the mobile top bar on a phone viewport`
+- [ ] Tapping the hamburger drops down a drawer listing every nav option, right-aligned
+      `tests/Browser/MobileNavTest.php::it opens the drawer with every nav option`
+- [ ] The drawer can be reopened after closing, and closes via the X, tap outside, and link navigation
+      `tests/Browser/MobileNavTest.php::it closes the drawer via x, outside tap, and navigation`
+      `tests/Browser/MobileNavTest.php::it reopens the drawer after closing`
+- [ ] From inside a feed on a phone, every nav destination is reachable
+      `tests/Browser/MobileNavTest.php::it reaches every destination from a feed`
+- [ ] On a touch viewport, the watched toggle and ⋯ menu are visible on cards, and the menu can mark watched, unwatched, and hide
+      `tests/Browser/MobileFeedTest.php::it exposes card actions on touch`
+- [ ] Feed and group feed heroes stack compactly with filters on their own row on a phone
+      `tests/Browser/MobileFeedTest.php::it renders the hero without horizontal overflow`
+- [ ] No audited page (signed-in and auth) scrolls horizontally at phone width
+      `tests/Browser/MobileSmokeTest.php::it has no horizontal overflow on phone width`
+- [ ] Desktop (768px and up) sidebar and layout are unchanged [MANUAL]
+- [ ] Drawer animation feels smooth and the right-aligned text sits within easy thumb reach [MANUAL]
 
 ---
